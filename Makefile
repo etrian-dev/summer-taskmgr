@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -g -Wall -pedantic
-LIBS = -lncurses -lm
+LIBS = -lncurses -lm -lpthread
 
 .PHONY: all clean
 

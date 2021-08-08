@@ -35,6 +35,21 @@
 #include "mem_info.h"
 #include "process_info.h"
 
+int cmp_commands(const void *a, const void *b) {
+	Task *ta = (Task*)a;
+	Task *tb = (Task*)b;
+	if(!(ta->command || tb->command)) {
+		return 0;
+	}
+	if(!ta->command && tb->command) {
+		return 1;
+	}
+	if(ta->command && !tb->command) {
+		return -1;
+	}
+	return strcasecmp(ta->command, tb->command);
+}
+
 int main(int argc, char **argv)
 {
 	// init curses
@@ -46,7 +61,7 @@ int main(int argc, char **argv)
 	int rows, cols;
 	getmaxyx(stdscr, rows, cols);
 
-	gulong total_mem, free_mem, avail_mem, swp_tot, swp_free;
+	gulong total_mem, free_mem, avail_mem, buffer_cached, swp_tot, swp_free;
 	// refresh rate (approx)
 	struct timespec delay;
 	delay.tv_sec = 0;
@@ -66,14 +81,24 @@ int main(int argc, char **argv)
 
 	int xoff = 1;
 	int yoff = 1;
+	int filter_ln = 0;
 
-	GArray *ps = NULL;
-	gulong num_ps;
-	gulong num_threads;
+	// the array of structures representig processes
+	GArray *ps = g_array_new(FALSE, FALSE, sizeof(Task));
+	g_array_set_clear_func(ps, clear_task);
+
+	long num_ps = 0;
+	long num_threads = 0;
+
+	// create the input thread
+	char *filter_str = NULL;
 
 	while(1) {
-		get_mem_info(&total_mem, &free_mem, &avail_mem, &swp_tot, &swp_free);
-		get_processes_info(&ps, &num_ps, &num_threads);
+		get_mem_info(&total_mem, &free_mem, &avail_mem, &buffer_cached, &swp_tot, &swp_free);
+		get_processes_info(ps, &num_ps, &num_threads);
+
+		// sort the process array lexicographically by command name
+		g_array_sort(ps, cmp_commands);
 
 		// sets the percentage of memory not available for new processes (not necessarily in use)
 		// as the
@@ -86,8 +111,8 @@ int main(int argc, char **argv)
 		mvaddstr(yoff++, xoff, scale);
 		mvprintw(
 			yoff++, xoff,
-			"Total: %lu MiB\tAvailable: %lu MiB\tFree: %lu",
-			total_mem / 1024, avail_mem / 1024, free_mem / 1024);
+			"Total: %lu MiB\tAvailable: %lu MiB\tFree: %lu MiB\tBuff/Cached: %lu MiB",
+			total_mem / 1024, avail_mem / 1024, free_mem / 1024, buffer_cached / 1024);
 
 		// does the same thing, but for swap (resets the bar first)
 		memset(progbar + 1, '.', quot * sizeof(char));
@@ -96,25 +121,37 @@ int main(int argc, char **argv)
 
 		mvprintw(yoff++, xoff, "%s (%.3f%% in use)", progbar, percent);
 		mvaddstr(yoff++, xoff, scale);
-		mvprintw(yoff++, xoff, "Swap Total: %lu MiB\tSwap Free: %lu", swp_tot / 1024, swp_free / 1024);
+		mvprintw(yoff++, xoff, "Swap Total: %lu MiB\tSwap Free: %lu MiB", swp_tot / 1024, swp_free / 1024);
 
 		// print the list of processes (as long as they fit in the window
+		filter_ln = yoff; // save the line where the process filter string should be typed
 		yoff++;
 		mvaddstr(yoff++, xoff, "PROCESS STATISTICS");
-		mvprintw(yoff++, xoff, "# processes: %lu", num_ps);
+		mvprintw(yoff++, xoff, "processes: %lu\tthreads: %lu", num_ps, num_threads);
+		attron(A_STANDOUT|A_BOLD);
 		mvprintw(yoff++, xoff,
-			"%-10s %-10s %-10s",
-			"PID", "STATE", "CMD");
+			"%-10s %-10s %-5s %-5s %-10s %-10s %-10s",
+			"PID", "PPID", "STATE", "NICE", "THREADS", "VSZ (kB)", "CMD");
+		attroff(A_STANDOUT|A_BOLD);
 		for(int i = 0; i + yoff < rows - 1; i++) {
-			Task *t = &(g_array_index(ps, Task, num_ps - i - 1));
+			Task *t = &(g_array_index(ps, Task, i));
 			mvprintw(i + yoff, xoff,
-				"%-10ld %-10c %-s",
-				t->pid, t->state, t->command);
+				"%-10ld %-10ld %-5c %-5ld %-10ld %-10ld %s",
+				t->pid, t->ppid, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1024, t->command);
+		}
+
+		move(filter_ln, xoff);
+		if(filter_str) {
+			attron(A_BOLD);
+			mvaddstr(filter_ln, xoff, filter_str);
+			attroff(A_BOLD);
 		}
 
 		// reset the array
 		g_array_free(ps, TRUE);
-		ps = NULL;
+		ps = g_array_new(FALSE, FALSE, sizeof(Task));
+		g_array_set_clear_func(ps, clear_task);
+
 		num_ps = 0;
 		num_threads = 0;
 

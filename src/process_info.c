@@ -12,15 +12,20 @@
 
 #include "process_info.h"
 
+// clears (but does not free) a Task structure (given as a pointer)
+void clear_task(void *tp) {
+    Task *task_ptr = (Task*)tp;
+    free(task_ptr->command);
+}
+
 // gets information about the running processes
-gboolean get_processes_info(GArray **processes, gulong *num_ps, gulong *num_threads) {
+gboolean get_processes_info(GArray *processes, long *num_ps, long *num_threads) {
     // open the directory stream containing processes in the system as subdirs
     DIR *proc_dir = opendir(PROC_DIR);
-    gchar proc_stat[BUF_BASESZ];
+    gchar path_statfile[BUF_BASESZ]; // this buffer will hold the path to the stat file of each process
 
-    *processes = g_array_new(FALSE, TRUE, sizeof(Task));
-    *num_ps = 0; // the number of processes (may be < than the size of the array)
-    *num_threads = 0; // the total number of threads (of all processes)
+    *num_ps = 0; // the number of processes currently in the system
+    *num_threads = 0; // the total number of threads (of all processes) currently in the system
 
     if(proc_dir) {
 	// read the dir stream
@@ -32,19 +37,32 @@ gboolean get_processes_info(GArray **processes, gulong *num_ps, gulong *num_thre
 	    if(entry->d_type == DT_DIR && isNumber(entry->d_name, &pid) == 0) {
 		// a new process has been found: add it to the task array
 		Task newproc;
-		snprintf(proc_stat, BUF_BASESZ, "/proc/%ld/stat", pid);
+		newproc.visible = TRUE; // by default a process is visible
+
+		snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/stat", pid);
 		// get detailed process infos from the file above
-		if(get_stat_details(&newproc, proc_stat)) {
-		    g_array_append_val(*processes, newproc);
+		gboolean stat_ret = get_stat_details(&newproc, path_statfile);
+		snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/cmdline", pid);
+		// get the full command of this process (with options and args)
+		gboolean cmd_ret = get_cmdline(&newproc, path_statfile);
+		if(stat_ret && cmd_ret) {
+		    g_array_append_val(processes, newproc);
 		    (*num_ps)++;
-		    (*num_threads) += newproc.num_threads;
+		    *num_threads += newproc.num_threads;
+		}
+		else {
+		    if(newproc.command) free(newproc.command);
 		}
 	    }
+	}
+	if(errno != 0) {
+	    // read error because errno changed
+	    return FALSE;
 	}
 
 	closedir(proc_dir);
     }
-    return (processes != NULL ? TRUE : FALSE);
+    return (proc_dir != NULL ? TRUE : FALSE);
 }
 
 gboolean get_stat_details(Task *proc, const char *stat_filepath) {
@@ -55,31 +73,59 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
     // fields contained in the stat file
     int pid, ppid, exit_status;
     long int nice, nthreads;
-    long int resident_set; // # of pages of this process in real memory (the resident set) [UNRELIABLE]
-    long unsigned int usr_time, sys_time, virt_size;
-    char cmd[BUF_BASESZ], state;
-    memset(cmd, '\0', BUF_BASESZ * sizeof(char));
+    long int rss; // # of pages of this process in real memory (the resident set) [not reliable]
+    long unsigned int usr_time, sys_time, vsize;
+    char state;
 
     if(fp) {
 	if(fgets(buf, BUF_BASESZ, fp)) {
 	    sscanf(buf,
-	    "%d (%[^)]) %c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %*u %lu %lu %*d %*d %*d\
-	     %ld %ld %*d %*u %lu %ld %*u %*u %*u %*u %*u %*u %*u %*u %*u\
-	     %*u %*u %*u %*u %*d %*u %*u %*u %*u %*d %*u %*u %*u %*u %*u\
-	     %*u %*u %d",
-	    &pid, cmd, &state, &ppid, &usr_time, &sys_time, &nice, &nthreads, &virt_size, &resident_set, &exit_status);
+	    /*
+	     * from /proc/pid/stat's documentation
+	     * 1st row: fields 1 to 18. 2nd row: fiels 19 to 34. 3rd row: fields 35 to 52
+	     */
+	    "%d (%*[^ ] %c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu %*d %*d %*d\
+	     %ld %ld %*d %*[0-9] %lu %ld %*[0-9] %*u %*u %*u %*u %*u %*u %*u %*u %*u\
+	     %*u %*u %*u %*d %*d %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %d",
+	    &pid, &state, &ppid, &usr_time, &sys_time, &nice, &nthreads, &vsize, &rss, &exit_status);
 
+	    // fill the task structure with reads
 	    proc->pid = pid;
-	    proc->ppid = ppid; // fix
-	    proc->command = strdup(cmd);
 	    proc->state = state;
-	    proc->cpu_usr = usr_time / cpu_ticks_sec; // fix
-	    proc->cpu_sys = sys_time / cpu_ticks_sec; // fix
-	    proc->num_threads = nthreads; // fix
+	    proc->ppid = ppid;
+	    proc->cpu_usr = usr_time / cpu_ticks_sec;
+	    proc->cpu_sys = sys_time / cpu_ticks_sec;
+	    proc->nice = nice;
+	    proc->num_threads = nthreads;
+	    proc->virt_size_bytes = vsize;
+	    proc->resident_set = rss;
 	}
 	fclose(fp);
     }
     return (fp ? TRUE : FALSE);
+}
+
+gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
+    FILE *fp = fopen(cmd_filepath, "r");
+    char buf[BUF_BASESZ];
+    memset(buf, '\0', BUF_BASESZ * sizeof(char));
+    if(fp) {
+	if(fgets(buf, BUF_BASESZ, fp)) {
+	    // the command line args are separated by nulls instead of blanks, so I substitute them
+	    // to make it more readable
+	    for(int i = 0; i < BUF_BASESZ - 1; i++) {
+		if(buf[i] == '\0' && buf[i+1] != '\0') {
+		    buf[i] = ' ';
+		}
+	    }
+	    proc->command = strdup(buf);
+	}
+	else {
+	    proc->command = NULL;
+	}
+	fclose(fp);
+    }
+    return (fp && proc->command ? TRUE : FALSE);
 }
 
 /**

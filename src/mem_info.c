@@ -11,6 +11,7 @@ gboolean get_mem_info(
     gulong *total,
     gulong *free,
     gulong *available,
+    gulong *buffer_cached,
     gulong *swp_tot,
     gulong *swp_free) {
 
@@ -43,6 +44,7 @@ gboolean get_mem_info(
 	*total = mtot;
 	*free = mfree;
 	*available = mavail;
+	*buffer_cached = mbuffer + mcached;
 	*swp_tot = mswp_tot;
 	*swp_free = mswp_free;
     }

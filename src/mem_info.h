@@ -10,6 +10,7 @@ gboolean get_mem_info(
     gulong *total,
     gulong *free,
     gulong *available,
+    gulong *buffer_cached,
     gulong *swp_tot,
     gulong *swp_avail
     );
