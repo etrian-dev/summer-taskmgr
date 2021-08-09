@@ -7,13 +7,10 @@
 
 // gets statistics about the cpu usage
 // see man 5 proc at section "/proc/stat"
-gboolean get_cpu_info(
-    gushort *cpu_count,
-    gulong *user_time, gulong *user_time_prev,
-    gulong *sys_time, gulong *sys_time_prev,
-    gulong *tot_time, gulong *tot_time_prev) {
-
-	sysconf(_SC_CLK_TCK);
+gboolean get_cpu_info(int *num_cores, CPU_data_t *cpudata) {
+	// gets the unit used to express CPU time reported by /proc/stat
+	// usually it's 100, meaning that one needs to scale up by 100 to get the real value
+	gulong USER_HZ = sysconf(_SC_CLK_TCK); // runtime constant
 
 	//temp local variables
 	gushort num_cpus = 0;
@@ -21,6 +18,7 @@ gboolean get_cpu_info(
 	gulong usr_lowprio = 0; // time spent in user mode with low priority
 	gulong sys = 0;
 	gulong idle = 0;
+	gulong total = 0;
 
 	FILE *stat_file = NULL;
 	char *buf = malloc(BUF_BASESZ);
@@ -38,15 +36,22 @@ gboolean get_cpu_info(
 		}
 		fclose(stat_file);
 
-		*user_time_prev = *user_time;
-		*sys_time_prev = *sys_time;
-		*tot_time_prev = *tot_time;
 
 		// calculate the output values based on the reads
-		*cpu_count = num_cpus;
-		*user_time = usr + usr_lowprio;
-		*sys_time = sys;
-		*tot_time = usr + usr_lowprio + sys + idle;
+		*num_cores = num_cpus;
+		total = usr + usr_lowprio + sys + idle;
+		// calculate the new values using deltas
+		float fact = USER_HZ / (float)(total - cpudata->prev_total);
+		cpudata->perc_usr = (usr - cpudata->prev_usr) * fact;
+		cpudata->perc_usr_nice = (usr_lowprio - cpudata->prev_usr_nice) * fact;
+		cpudata->perc_sys = (sys - cpudata->prev_sys) * fact;
+		cpudata->perc_idle = (idle - cpudata->prev_idle) * fact;
+		// update the previous values with the current reads
+		cpudata->prev_usr = usr;
+		cpudata->prev_usr_nice = usr_lowprio;
+		cpudata->prev_sys = sys;
+		cpudata->prev_idle = idle;
+		cpudata->prev_total = total;
 	}
 	return (stat_file && buf ? TRUE : FALSE);
 }

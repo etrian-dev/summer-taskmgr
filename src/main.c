@@ -61,11 +61,11 @@ int main(int argc, char **argv)
 	int rows, cols;
 	getmaxyx(stdscr, rows, cols);
 
-	gulong total_mem, free_mem, avail_mem, buffer_cached, swp_tot, swp_free;
 	// refresh rate (approx)
 	struct timespec delay;
-	delay.tv_sec = 0;
-	delay.tv_nsec = 500000000; // 5 * 10^8 ns = 0.5s
+	delay.tv_sec = 1;
+	delay.tv_nsec = 0;
+	//delay.tv_nsec = 500000000; // 5 * 10^8 ns = 0.5s
 
 	char progbar[102];
 	progbar[0] = '[';
@@ -83,6 +83,30 @@ int main(int argc, char **argv)
 	int yoff = 1;
 	int filter_ln = 0;
 
+	/////////////////////////////////////////////////////////////////////////////////
+	// CPU
+
+	CPU_data_t cpu_usage;
+	memset(&cpu_usage, 0, sizeof(CPU_data_t));
+	int core_count;
+
+	/////////////////////////////////////////////////////////////////////////////////
+
+	// Memory
+	/////////////////////////////////////////////////////////////////////////////////
+
+	gulong total_mem = 0;
+	gulong free_mem = 0;
+	gulong avail_mem = 0;
+	gulong buffer_cached = 0;
+	gulong swp_tot = 0;
+	gulong swp_free = 0;
+
+	/////////////////////////////////////////////////////////////////////////////////
+
+	// Tasks
+	/////////////////////////////////////////////////////////////////////////////////
+
 	// the array of structures representig processes
 	GArray *ps = g_array_new(FALSE, FALSE, sizeof(Task));
 	g_array_set_clear_func(ps, clear_task);
@@ -90,11 +114,14 @@ int main(int argc, char **argv)
 	long num_ps = 0;
 	long num_threads = 0;
 
+	/////////////////////////////////////////////////////////////////////////////////
+
 	// create the input thread
 	char *filter_str = NULL;
 
 	while(1) {
 		get_mem_info(&total_mem, &free_mem, &avail_mem, &buffer_cached, &swp_tot, &swp_free);
+		get_cpu_info(&core_count, &cpu_usage);
 		get_processes_info(ps, &num_ps, &num_threads);
 
 		// sort the process array lexicographically by command name
@@ -106,7 +133,7 @@ int main(int argc, char **argv)
 		gulong quot = floor(percent);
 		memset(progbar + 1, '#', quot * sizeof(char));
 
-		mvaddstr(yoff++, xoff, "MEMORY STATISTICS");
+		mvaddstr(yoff++, xoff, "MEMORY");
 		mvprintw(yoff++, xoff, "%s (%.3f%% in use)", progbar, percent);
 		mvaddstr(yoff++, xoff, scale);
 		mvprintw(
@@ -123,10 +150,15 @@ int main(int argc, char **argv)
 		mvaddstr(yoff++, xoff, scale);
 		mvprintw(yoff++, xoff, "Swap Total: %lu MiB\tSwap Free: %lu MiB", swp_tot / 1024, swp_free / 1024);
 
+		mvprintw(yoff++, xoff, "CPU %s\tcores %d", "<placeholder>", core_count);
+		mvprintw(yoff++, xoff,
+			"CPU%% usr: %.3f\tnice: %.3f\tsys: %.3f\tidle: %.3f",
+			cpu_usage.perc_usr, cpu_usage.perc_usr_nice, cpu_usage.perc_sys, cpu_usage.perc_idle);
+
 		// print the list of processes (as long as they fit in the window
 		filter_ln = yoff; // save the line where the process filter string should be typed
 		yoff++;
-		mvaddstr(yoff++, xoff, "PROCESS STATISTICS");
+		mvaddstr(yoff++, xoff, "PROCESSES");
 		mvprintw(yoff++, xoff, "processes: %lu\tthreads: %lu", num_ps, num_threads);
 		attron(A_STANDOUT|A_BOLD);
 		mvprintw(yoff++, xoff,

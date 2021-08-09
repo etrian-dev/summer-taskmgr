@@ -1,0 +1,5 @@
+Handle input for filtering processes
+Calculate CPU usage both global and per-process
+Provide other task sorting criteria and a way to switch between them
+Improve the UI, maybe by having separate boxes
+Separate function(s) to draw graphs and tasks on screen (handles all the prints)
