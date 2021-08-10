@@ -1,5 +1,13 @@
 Handle input for filtering processes
-Calculate CPU usage both global and per-process
+Calculate CPU usage both global and per-process (partial)
 Provide other task sorting criteria and a way to switch between them
-Improve the UI, maybe by having separate boxes
-Separate function(s) to draw graphs and tasks on screen (handles all the prints)
+Query some files to get the cpu model name/data etc.. One such file could be /proc/cpuinfo
+
+Perhaps use threads to update values with different intervals and refresh the windows at a constant rate
+(as it works now). This could have the benefit of separating the fetching of new data from its display.
+So the get_*_info() functions would be called from their thread at regular intervals.
+Another option is to handle everything with signals handlers and SIGALRM
+
+Make the drawing process more efficient by having data alloc'd on the heap that is modified based
+on deltas with the previous iteration, instead of having local fixed-sized buffers
+Maybe use ncurses forms instead of plain text?

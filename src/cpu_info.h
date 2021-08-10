@@ -7,7 +7,7 @@
 #define BUF_BASESZ 256
 
 // defines a structure to hold cpu statistics
-typedef struct _cpu_data_t {
+typedef struct cpu_data_t {
     // previous (unscaled) data points
     unsigned long int prev_usr;
     unsigned long int prev_usr_nice;
