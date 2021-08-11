@@ -21,14 +21,29 @@ struct task {
 };
 typedef struct task Task;
 
+typedef struct tasklist {
+    long int num_ps;
+    long int num_threads;
+    GArray *ps;
+    // syncronization variables
+    pthread_mutex_t mux_memdata;
+    pthread_cond_t cond_updating;
+    gboolean is_busy;
+} TaskList;
+
 // clears (but does not free) a Task structure (given as a pointer)
 void clear_task(void *tp);
-// filters tasks that contain the string filter in their commandline
-// all unmatched tasks are hidden
-void filter_tasks(GArray *tasks, const char *filter);
+
+// Process sorting functions
+// lexicographical sorting on the cmdline string
+int cmp_commands(const void *a, const void *b);
+// pid increasing sorting
+int cmp_pid_incr(const void *a, const void *b);
+// pid decreasing sorting
+int cmp_pid_decr(const void *a, const void *b);
 
 // gets information about the running processes
-gboolean get_processes_info(GArray *processes, long *num_ps, long *num_threads);
+gboolean get_processes_info(TaskList *tasks);
 gboolean get_stat_details(Task *proc, const char *stat_filepath);
 gboolean get_cmdline(Task *proc, const char *cmd_filepath);
 

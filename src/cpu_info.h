@@ -4,10 +4,13 @@
 #include <glib.h>
 
 #define CPU_STATFILE "/proc/stat"
+#define CPU_MODELFILE "/proc/cpuinfo" // arch-dependent contents
 #define BUF_BASESZ 256
 
 // defines a structure to hold cpu statistics
 typedef struct cpu_data_t {
+    char *model;
+    int num_cores;
     // previous (unscaled) data points
     unsigned long int prev_usr;
     unsigned long int prev_usr_nice;
@@ -19,14 +22,15 @@ typedef struct cpu_data_t {
     float perc_usr_nice;
     float perc_sys;
     float perc_idle;
+    // syncronization variables
+    pthread_mutex_t mux_memdata;
+    pthread_cond_t cond_updating;
+    gboolean is_busy;
 } CPU_data_t;
 
 // gets statistics about the cpu usage
 // not reentrant: uses static variables
-gboolean get_cpu_info(int *num_cores, CPU_data_t *cpudata);
-
-// utility function to obtain the cpu usage percentage for the value passes as the first param
-// the formula is (curr - prev) / (tot_current - tot_prev) iff curr > prev, 0 otherwise
-gfloat calc_percentage(gulong current, gulong prev, gulong tot_current, gulong tot_prev);
+gboolean get_cpu_info(CPU_data_t *cpudata);
+gboolean get_cpu_model(char **model, int *cores);
 
 #endif

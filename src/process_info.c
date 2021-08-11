@@ -19,13 +19,10 @@ void clear_task(void *tp) {
 }
 
 // gets information about the running processes
-gboolean get_processes_info(GArray *processes, long *num_ps, long *num_threads) {
+gboolean get_processes_info(TaskList *tasks) {
     // open the directory stream containing processes in the system as subdirs
     DIR *proc_dir = opendir(PROC_DIR);
     gchar path_statfile[BUF_BASESZ]; // this buffer will hold the path to the stat file of each process
-
-    *num_ps = 0; // the number of processes currently in the system
-    *num_threads = 0; // the total number of threads (of all processes) currently in the system
 
     if(proc_dir) {
         // read the dir stream
@@ -46,9 +43,9 @@ gboolean get_processes_info(GArray *processes, long *num_ps, long *num_threads) 
                 // get the full command of this process (with options and args)
                 gboolean cmd_ret = get_cmdline(&newproc, path_statfile);
                 if(stat_ret && cmd_ret) {
-                    g_array_append_val(processes, newproc);
-                    (*num_ps)++;
-                    *num_threads += newproc.num_threads;
+                    g_array_append_val(tasks->ps, newproc);
+                    tasks->num_ps += 1;
+                    tasks->num_threads += newproc.num_threads;
                 }
                 else {
                     if(newproc.command) free(newproc.command);
