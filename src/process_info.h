@@ -21,7 +21,7 @@ struct task {
 };
 typedef struct task Task;
 
-typedef struct tasklist {
+struct tasklist {
     long int num_ps;
     long int num_threads;
     GArray *ps;
@@ -29,11 +29,15 @@ typedef struct tasklist {
     pthread_mutex_t mux_memdata;
     pthread_cond_t cond_updating;
     gboolean is_busy;
-} TaskList;
+};
+typedef struct tasklist TaskList;
 
 // clears (but does not free) a Task structure (given as a pointer)
 void clear_task(void *tp);
 
+
+// switch between sorting modes
+void switch_sortmode(GArray *processes, int (*newmode)(const void *, const void *));
 // Process sorting functions
 // lexicographical sorting on the cmdline string
 int cmp_commands(const void *a, const void *b);

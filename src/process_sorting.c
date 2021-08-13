@@ -2,6 +2,10 @@
 
 #include <string.h>
 
+void switch_sortmode(GArray *processes, int (*newmode)(const void *, const void *)) {
+    g_array_sort(processes, newmode);
+}
+
 // default sorting function for processes in the process array
 // returns -1 iff process a's cmdline (as read from /proc/[a_pid]/cmdline) is
 // lexicographically less than b's or b's is NULL. It returns 0 if both cmdlines are NULL

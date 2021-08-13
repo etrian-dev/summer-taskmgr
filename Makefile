@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -g -Wall -pedantic
 CFLAGS += $(shell pkg-config --cflags glib-2.0)
-LIBS = -lm -lncurses -lpthread
+LIBS = -lm -lmenu -lncurses -lpthread -lrt
 LIBS += $(shell pkg-config --libs glib-2.0)
 
 .PHONY: all clean
