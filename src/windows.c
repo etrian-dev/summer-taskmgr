@@ -116,8 +116,8 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
     }
     tasks->is_busy = TRUE;
 
-    // sort the process array lexicographically by command name
-    g_array_sort(tasks->ps, cmp_pid_decr);
+    // sort processes based on the function indicated at runtime
+    g_array_sort(tasks->ps, tasks->sortfun);
 
     snprintf(ln, LINE_MAXLEN, "processes: %ld\tthreads: %ld", tasks->num_ps, tasks->num_threads);
     snprintf(ln2, LINE_MAXLEN,

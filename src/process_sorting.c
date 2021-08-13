@@ -2,8 +2,8 @@
 
 #include <string.h>
 
-void switch_sortmode(GArray *processes, int (*newmode)(const void *, const void *)) {
-    g_array_sort(processes, newmode);
+void switch_sortmode(TaskList *tasks, int (*newmode)(const void *, const void *)) {
+    tasks->sortfun = newmode;
 }
 
 // default sorting function for processes in the process array

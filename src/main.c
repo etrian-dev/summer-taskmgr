@@ -120,6 +120,8 @@ int main(int argc, char **argv) {
     tasks = calloc(1, sizeof(TaskList));
     tasks->ps = g_array_new(FALSE, FALSE, sizeof(Task));
     g_array_set_clear_func(tasks->ps, clear_task);
+    // default process sorting criteria:lexicographical order of command lines
+    tasks->sortfun = cmp_commands;
     pthread_mutex_init(&tasks->mux_memdata, NULL);
     pthread_cond_init(&tasks->cond_updating, NULL);
 
@@ -165,13 +167,13 @@ int main(int argc, char **argv) {
                 print_submenu();
                 char s = getch();
                 if(s == '0') {
-                    switch_sortmode(tasks->ps, cmp_commands);
+                    switch_sortmode(tasks, cmp_commands);
                 }
                 if(s == '1') {
-                    switch_sortmode(tasks->ps, cmp_pid_incr);
+                    switch_sortmode(tasks, cmp_pid_incr);
                 }
                 if(s == '2') {
-                    switch_sortmode(tasks->ps, cmp_pid_decr);
+                    switch_sortmode(tasks, cmp_pid_decr);
                 }
                 break;
             }

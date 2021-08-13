@@ -29,6 +29,7 @@ struct tasklist {
     pthread_mutex_t mux_memdata;
     pthread_cond_t cond_updating;
     gboolean is_busy;
+    int (*sortfun)(const void*, const void*);
 };
 typedef struct tasklist TaskList;
 
@@ -37,7 +38,7 @@ void clear_task(void *tp);
 
 
 // switch between sorting modes
-void switch_sortmode(GArray *processes, int (*newmode)(const void *, const void *));
+void switch_sortmode(TaskList *tasks, int (*newmode)(const void *, const void *));
 // Process sorting functions
 // lexicographical sorting on the cmdline string
 int cmp_commands(const void *a, const void *b);
