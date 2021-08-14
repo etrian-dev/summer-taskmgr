@@ -8,6 +8,7 @@
 
 struct task {
     gboolean visible; // flag used to hide the process from the view
+    gboolean present; // flag used to indicate that the process was found in the last scan
     int pid;
     char *command;
     char state;

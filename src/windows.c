@@ -130,11 +130,13 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
     for(int i = yoff; i < lines - 1; i++) {
         char procline[LINE_MAXLEN];
         Task *t = &(g_array_index(tasks->ps, Task, i));
-        snprintf(procline, LINE_MAXLEN,
-                 "%-10d %-10d %-5c %-5ld %-10ld %-10ld %s",
-                 t->pid, t->ppid, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
+        if(t->visible == TRUE) {
+            snprintf(procline, LINE_MAXLEN,
+                     "%-10d %-10d %-5c %-5ld %-10ld %-10ld %s",
+                     t->pid, t->ppid, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
 
-        mvwaddstr(win, i, xoff, procline);
+            mvwaddstr(win, i, xoff, procline);
+        }
     }
 
     tasks->is_busy = FALSE;
