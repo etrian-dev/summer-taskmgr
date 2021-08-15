@@ -4,8 +4,13 @@
 
 * Handle input for filtering processes
 * Calculate per-process CPU usage (load avg)
+* individual per-core CPU usage bars, similar to the memory ones
 * Make the drawing process more efficient by having data alloc'd on the heap that is modified based
 on deltas with the previous iteration, instead of having local fixed-sized buffers (sort of)
 * Maybe use ncurses forms instead of plain text?
 * Handle SIGINT to terminate cleanly the process (either with a signal handler or some dedicated thread)
-* Handle SIGALRM (and set a 1s alarm) to refresh the windows in the main thread, rather that the nanosleep inside a while
+* Maybe use a GSequence instead of a GSList for the process's open file descriptor list
+(or any data structure optimized for searches and easily maintained ordered, really)
+* Fix the search highlighting to make it persistent until a certain key is pressed
+* put commands onscreen (for instance on the last line, similar to htop). It could even be
+a dynamic command prompt used to control the program's behaviour

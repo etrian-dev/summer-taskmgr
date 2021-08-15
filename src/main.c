@@ -1,5 +1,7 @@
 #include <time.h>
 #include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
 
 #include <unistd.h>
 #include <signal.h>
@@ -76,6 +78,47 @@ int print_menu(char **items, char **descriptions, const int nitems) {
     refresh();
     return 0;
 }
+/**
+ *
+ */
+void find_pattern(void) {
+    int c;
+    char *pattern = calloc(BUF_BASESZ, sizeof(char));
+    gsize alloc_len = BUF_BASESZ;
+    const gsize xoff = strlen("Pattern: ");
+    gsize currlen = 0;
+    while((c = getch()) != '\n') {
+        if(alloc_len <= currlen) {
+            alloc_len *= 2;
+            pattern = realloc(pattern, alloc_len);
+        }
+        if(isalnum(c)) {
+            pattern[currlen] = (char)c;
+            currlen++;
+            mvaddch(LINES - 1, xoff + currlen, (char)c);
+        }
+    }
+    // Hightlight matching paths
+    pthread_mutex_lock(&tasks->mux_memdata);
+    while(tasks->is_busy == TRUE) {
+        pthread_cond_wait(&tasks->cond_updating, &tasks->mux_memdata);
+    }
+    tasks->is_busy = TRUE;
+    int matches = 0;
+    for(int p = 0; p < tasks->num_ps; p++) {
+        Task *t = &g_array_index(tasks->ps, Task, p);
+        if(strstr(t->command, pattern) != NULL) {
+            t->highlight = TRUE;
+            matches++;
+        }
+    }
+    tasks->is_busy = FALSE;
+    pthread_mutex_unlock(&tasks->mux_memdata);
+    mvprintw(LINES - 1, xoff + currlen + 5,
+        "Processes matching \"%s\": %d", pattern, matches);
+    free(pattern);
+    refresh();
+}
 
 /**
  * \brief The program's main function
@@ -93,12 +136,13 @@ int main(int argc, char **argv) {
     menuitems[5] = "m"; menudescr[5] = "Hide the menu";
 
     // submenu used to choose the process sorting mode
-    const int nmodes = 3;
+    const int nmodes = 4;
     char **sorting_modes = malloc(nmodes * sizeof(char*));
     char **modes_descr = malloc(nmodes * sizeof(char*));
     sorting_modes[0] = "cmd"; modes_descr[0] = "Sorts processes using lexicographical order of their command line";
     sorting_modes[1] = "PID (incr)"; modes_descr[1] = "Sorts processes using increasing ordering on their PID";
     sorting_modes[2] = "PID (decr)"; modes_descr[2] = "Sorts processes using decreasing ordering on their PID";
+    sorting_modes[4] = "PID (decr)"; modes_descr[3] = "Sorts processes using lexicograhical order of their owner's usernames";
 
     // creates a timer that generates SIGALRM each interval
     // this timer is used to periodically refresh the windows displaying data
@@ -189,14 +233,19 @@ int main(int argc, char **argv) {
                 // print the submenu and change the soring mode
                 print_menu(sorting_modes, modes_descr, nmodes);
                 char s = getch();
-                if(s == '0') {
-                    switch_sortmode(tasks, cmp_commands);
-                }
-                if(s == '1') {
-                    switch_sortmode(tasks, cmp_pid_incr);
-                }
-                if(s == '2') {
-                    switch_sortmode(tasks, cmp_pid_decr);
+                switch(s) {
+                    case '0':
+                        switch_sortmode(tasks, cmp_commands);
+                        break;
+                    case '1':
+                        switch_sortmode(tasks, cmp_pid_incr);
+                        break;
+                    case '2':
+                        switch_sortmode(tasks, cmp_pid_decr);
+                        break;
+                    case '3':
+                        switch_sortmode(tasks, cmp_usernames);
+                        break;
                 }
                 break;
             }
@@ -209,35 +258,9 @@ int main(int argc, char **argv) {
                 attron(A_BOLD);
                 mvaddstr(LINES - 1, 1, "Pattern: ");
                 attroff(A_BOLD);
-                char x;
-                char *pattern = calloc(BUF_BASESZ, sizeof(char));
-                gsize currlen = 0, maxlen = BUF_BASESZ;
-                const gsize xoff = strlen("Pattern: ");
-                while((x = getch()) != '\n') {
-                    currlen++;
-                    if(maxlen <= currlen) {
-                        pattern = realloc(pattern, 2 * maxlen);
-                    }
-                    pattern[currlen - 1] = x;
-                    // echo the character back
-                    mvaddch(LINES - 1, xoff + currlen, x);
-                }
-                pattern[currlen] = '\0';
-                // exclude paths who do not match
-                pthread_mutex_lock(&tasks->mux_memdata);
-                while(tasks->is_busy == TRUE) {
-                    pthread_cond_wait(&tasks->cond_updating, &tasks->mux_memdata);
-                }
-                tasks->is_busy = TRUE;
-                for(int p = 0; p < tasks->num_ps; p++) {
-                    Task *t = &g_array_index(tasks->ps, struct task, p);
-                    if(strstr(t->command, pattern) == NULL) {
-                        t->visible = FALSE;
-                    }
-                }
-                tasks->is_busy = FALSE;
-                pthread_mutex_unlock(&tasks->mux_memdata);
-                free(pattern);
+                find_pattern();
+                menu_shown = FALSE;
+                timer_settime(alarm, 0, &spec, NULL);
                 break;
             }
             case 'm': // toggles menu visibility

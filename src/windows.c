@@ -121,8 +121,8 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
 
     snprintf(ln, LINE_MAXLEN, "processes: %ld\tthreads: %ld", tasks->num_ps, tasks->num_threads);
     snprintf(ln2, LINE_MAXLEN,
-        "%-10s %-10s %-5s %-5s %-10s %-10s %-10s",
-        "PID", "PPID", "STATE", "NICE", "THREADS", "VSZ (GiB)", "CMD");
+        "%-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s",
+        "PID", "PPID", "USER", "STATE", "NICE", "THREADS", "VSZ (GiB)", "CMD");
 
     mvwaddstr(win, yoff++, xoff, ln);
     mvwaddstr(win, yoff++, xoff, ln2);
@@ -132,10 +132,15 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
         Task *t = &(g_array_index(tasks->ps, Task, i));
         if(t->visible == TRUE) {
             snprintf(procline, LINE_MAXLEN,
-                     "%-10d %-10d %-5c %-5ld %-10ld %-10ld %s",
-                     t->pid, t->ppid, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
-
+                     "%-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-30s",
+                     t->pid, t->ppid, t->username, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
+            if(t->highlight == TRUE) {
+                wattr_on(win, A_STANDOUT, NULL);
+            }
             mvwaddstr(win, i, xoff, procline);
+            if(t->highlight == TRUE) {
+                wattr_off(win, A_STANDOUT, NULL);
+            }
         }
     }
 

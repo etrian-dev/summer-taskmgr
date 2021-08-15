@@ -5,8 +5,10 @@
 #include <errno.h>
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <pwd.h> // to get usernames and user IDs from /etc/passwd
 
 #include <glib.h>
 
@@ -68,15 +70,26 @@ gboolean get_processes_info(TaskList *tasks) {
                 // get the full command of this process (with options and args)
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/cmdline", pid);
                 gboolean cmd_ret = get_cmdline(&newproc, path_statfile);
-                if(stat_ret && cmd_ret) {
+                // get a list of open file descriptors
+                snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/fd", pid);
+                GSList *fdlist = get_open_fd(path_statfile);
+                // get the username and user id of this process's owner
+                snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/status", pid);
+                gboolean set_uname = get_username(&newproc, path_statfile);
+                if(stat_ret && cmd_ret && set_uname) {
                     unsigned int ps_idx;
                     // If the process was already in the array just update its data
                     if(g_array_binary_search(tasks->ps, &newproc, compare_PIDs, &ps_idx)) {
-                        // Update the task with new data (actually the PID and visibility are the same)
                         Task *process = &g_array_index(tasks->ps, struct task, ps_idx);
+                        // discard the list of open file descriptors, then add the updated one
+                        g_slist_free(process->open_fds);
+                        // Update the task with new data, but leave PID, visibility and highlighting unchanged
                         process->present = TRUE;
                         process->ppid = newproc.ppid;
+                        process->userid = newproc.userid;
+                        process->username = newproc.username;
                         process->command = newproc.command;
+                        process->open_fds = fdlist;
                         process->state = newproc.state;
                         process->cpu_usr = newproc.cpu_usr;
                         process->cpu_sys = newproc.cpu_sys;
@@ -87,7 +100,8 @@ gboolean get_processes_info(TaskList *tasks) {
                     }
                     else {
                         // process not found: insert it at the end of the new processes's array
-                        newproc.visible = TRUE; // by default a process is visible
+                        // add to the process its list of open file decriptors
+                        newproc.open_fds = fdlist;
                         g_array_append_val(newprocs, newproc);
                         newprocs_sz += 1;
                     }
@@ -165,6 +179,10 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
                    &pid, &state, &ppid, &usr_time, &sys_time, &nice, &nthreads, &vsize, &rss, &exit_status);
 
             // fill the task structure with reads
+            // default flag values are: process present, visible and not highlighted
+            proc->present = TRUE;
+            proc->visible = TRUE;
+            proc->highlight = FALSE;
             proc->pid = pid;
             proc->state = state;
             proc->ppid = ppid;
@@ -174,34 +192,118 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
             proc->num_threads = nthreads;
             proc->virt_size_bytes = vsize;
             proc->resident_set = rss;
-            proc->present = TRUE; // process found
         }
         fclose(fp);
     }
     return (fp ? TRUE : FALSE);
 }
 
+/**
+ * \brief Reads the full command line of this process
+ *
+ * Given a process whose PID is x, this function reads the file /proc/x/cmdline to
+ * obtain a NULL-separated series of strings that correspond to the process's full
+ * command line (with arguments). The command line is truncated at BUF_BASESZ - 1 characters
+ * \param [in,out] proc The pointer to the Task whose command line should be read
+ * \param [in] cmd_filepath The path the the process's cmdline file (/proc/PID/cmdline)
+ * \return Returns TRUE iff the command line has been read successfully and is not NULL, FALSE otherwise
+ */
 gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
     FILE *fp = fopen(cmd_filepath, "r");
-    char buf[BUF_BASESZ];
-    memset(buf, '\0', BUF_BASESZ * sizeof(char));
+    char buf[BUF_BASESZ]; // a buffer hopefully long enough
+    memset(buf, 0 , BUF_BASESZ * sizeof(char));
     if(fp) {
         if(fgets(buf, BUF_BASESZ, fp)) {
-            // the command line args are separated by nulls instead of blanks, so I substitute them
-            // to make it more readable
+            // the command line args are separated by NULLs. This loop substitutes each
+            // of them with blanks (leaving the string terminator untouched)
             for(int i = 0; i < BUF_BASESZ - 1; i++) {
                 if(buf[i] == '\0' && buf[i+1] != '\0') {
                     buf[i] = ' ';
                 }
             }
+            // the command line is duplicated into the task's state
             proc->command = strdup(buf);
         }
         else {
+            // either no command line or an error in reading it
             proc->command = NULL;
         }
         fclose(fp);
     }
     return (fp && proc->command ? TRUE : FALSE);
+}
+/**
+ * \brief Get the list of this process's open file descriptor
+ *
+ * The function inserts in a list the names of open file descriptor associated to this
+ * process, as read from /proc/PID/fd
+ * \param [in] fd_dir The path to the directory containing open fds as subdirectories
+ * \return The list of open file descriptors iff at least one is open and can be read, NULL otherwise
+ */
+GSList *get_open_fd(const char *fd_dir) {
+    GSList *open_fd_list = NULL; // this list will contain the names of open file descriptors
+    DIR *dirp = opendir(fd_dir);
+
+    if(dirp) {
+        struct dirent *entry = NULL;
+        // no errno check, since i'm uninterested if some fds cannot be obtained
+        while((entry = readdir(dirp)) != NULL) {
+            long fd;
+            if(isNumber(entry->d_name, &fd) == 0) {
+                open_fd_list = g_slist_prepend(open_fd_list, GINT_TO_POINTER((int)fd));
+            }
+        }
+        closedir(dirp);
+    }
+    return (open_fd_list != NULL ? open_fd_list : NULL);
+}
+/**
+ * \brief Obtains the username of the user owning the process
+ *
+ * The process's status file contains the user id of the owner, thus its username can be obtained
+ * by parsing the file /etc/passwd. This is accomplished by the library function getpwuid_r()
+ */
+gboolean get_username(Task *tp, const char *statusfile) {
+    FILE *fp = fopen(statusfile, "r");
+    char *buf = calloc(BUF_BASESZ, sizeof(char));
+    if(fp && buf) {
+        int uid = -1; // this process owner's (effective) user id
+        while(fgets(buf, BUF_BASESZ, fp)) {
+            // parse only the line containing "Uid"
+            if(sscanf(buf, "Uid:\t%*d\t%d\t*d\t%*d", &uid) == 1) {
+                // set the uid field of the task
+                tp->userid = uid;
+                break;
+            }
+        }
+        fclose(fp);
+        // Detect if the user id was actually parsed correctly
+        if(uid == -1) {
+            return FALSE;
+        }
+        // obtain the username of the user having this user id
+        struct passwd pwd_entry;
+        struct passwd *search_result;
+        long suggested_size = sysconf(_SC_GETPW_R_SIZE_MAX);
+        if(suggested_size == -1) {
+            suggested_size = 16384; // 2^14, should be plenty
+        }
+        buf = realloc(buf, suggested_size);
+        if(getpwuid_r(uid, &pwd_entry, buf, suggested_size, &search_result) == 0) {
+            if(search_result != NULL) {
+                // a matching entry in /etc/passwd has been found (and is contained in pwd_entry and *search_result)
+                tp->username = strdup(pwd_entry.pw_name);
+            }
+        }
+        // otherwise some error occurred in getting the username matching uid
+        if(search_result == NULL) {
+            // no matching userin /etc/passwd
+            tp->username = NULL;
+        }
+
+        free(buf);
+    }
+    return (fp && tp->username ? TRUE : FALSE);
 }
 
 /**

@@ -33,3 +33,19 @@ int cmp_pid_incr(const void *a, const void *b) {
 int cmp_pid_decr(const void *a, const void *b) {
     return ((Task*)b)->pid - ((Task*)a)->pid;
 }
+// lexicographical username sorting (NULL usernames last)
+int cmp_usernames(const void *a, const void *b) {
+    Task *ta = (Task*)a;
+    Task *tb = (Task*)b;
+    if(!(ta->username || tb->username)) {
+        return 0;
+    }
+    if(!ta->username && tb->username) {
+        return 1;
+    }
+    if(ta->username && !tb->username) {
+        return -1;
+    }
+    // all usernames are lowercase [verify?], so strcasecmp isn't needed
+    return strcmp(ta->username, tb->username);
+}
