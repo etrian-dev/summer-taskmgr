@@ -6,6 +6,9 @@
 #include "cpu_info.h"
 #include "process_info.h"
 
+/**
+ * \brief This is the function executed by the thread that updates the memory data structure
+ */
 void *update_mem(void *mem_ds) {
     struct timespec delay;
     delay.tv_sec = 2;
@@ -31,6 +34,9 @@ void *update_mem(void *mem_ds) {
     }
     return (void*)0;
 }
+/**
+ * \brief This is the function executed by the thread that updates the CPU data structure
+ */
 void *update_cpu(void *cpu_ds) {
     struct timespec delay;
     delay.tv_sec = 0;
@@ -56,6 +62,9 @@ void *update_cpu(void *cpu_ds) {
     }
     return (void*)0;
 }
+/**
+ * \brief This is the function executed by the thread that updates the process list data structure
+ */
 void *update_proc(void *proc_ds) {
     struct timespec delay;
     delay.tv_sec = 1;
@@ -69,11 +78,6 @@ void *update_proc(void *proc_ds) {
             pthread_cond_wait(&tl->cond_updating, &tl->mux_memdata);
         }
         tl->is_busy = TRUE;
-
-        // first reset the data: empty the task list and reset the number of processes & threads
-        g_array_remove_range(tl->ps, 0, tl->num_ps); // inefficiently remove all elements from the tasklist
-        tl->num_ps = 0;
-        tl->num_threads = 0;
 
         get_processes_info(tl);
 

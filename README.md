@@ -1,6 +1,6 @@
 # Summer task manager
-A simple terminal-based task manager written in C, with a TUI interface written in ncurses
-*Prerequisites*:
+A simple terminal-based task manager written in C, with a TUI interface written in ncurses  
+**Prerequisites**:
 - ncurses library (with the menu addon -lmenu)
 - glib
 - pthreads library
@@ -22,3 +22,12 @@ the main window is refreshed, and hence the sumbenu is hidden under it. You can 
 - i: Freeze the screen (unimplemented)
 - f: Find a pattern in the process list (still under developement)
 - m: Show/Hide the menu
+### Usage
+To access the menu type 'm'. You will be presented with the set of options described above. 
+Finding patterns works properly (and it's probably more useful) without entering the menu. 
+A search is performed by typing a pattern (**currently deletions are not handled**) up to a newline (sent by <Enter>). 
+The pattern provided is searched as a substring of any process command line currently in the task list. 
+Any process whose command line matches pattern is then highlighted until 'f' is pressed to exit the search mode. 
+The number of matching processes is printed as well on the same line as the search prompt (the last on the terminal window).
+No other search or refinement can currently be performed while a search is in progress. When the search mode is 
+exited the line presenting it is cleared by wclrtoeol()

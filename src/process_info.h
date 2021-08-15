@@ -51,6 +51,10 @@ int cmp_pid_incr(const void *a, const void *b);
 int cmp_pid_decr(const void *a, const void *b);
 // lexicographical username sorting (NULL usernames last)
 int cmp_usernames(const void *a, const void *b);
+// increasing thread count
+int cmp_nthreads_inc(const void *a, const void *b);
+// decreasing thread count
+int cmp_nthreads_decr(const void *a, const void *b);
 
 // gets information about the running processes
 gboolean get_processes_info(TaskList *tasks);

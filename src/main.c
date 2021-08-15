@@ -115,7 +115,7 @@ void find_pattern(void) {
     tasks->is_busy = FALSE;
     pthread_mutex_unlock(&tasks->mux_memdata);
     mvprintw(LINES - 1, xoff + currlen + 5,
-        "Processes matching \"%s\": %d", pattern, matches);
+        "Processes matching \"%s\": %d (press 'f' to quit)", pattern, matches);
     free(pattern);
     refresh();
 }
@@ -136,13 +136,23 @@ int main(int argc, char **argv) {
     menuitems[5] = "m"; menudescr[5] = "Hide the menu";
 
     // submenu used to choose the process sorting mode
-    const int nmodes = 4;
-    char **sorting_modes = malloc(nmodes * sizeof(char*));
+    const int nmodes = 6;
+    char **modes_items = malloc(nmodes * sizeof(char*));
     char **modes_descr = malloc(nmodes * sizeof(char*));
-    sorting_modes[0] = "cmd"; modes_descr[0] = "Sorts processes using lexicographical order of their command line";
-    sorting_modes[1] = "PID (incr)"; modes_descr[1] = "Sorts processes using increasing ordering on their PID";
-    sorting_modes[2] = "PID (decr)"; modes_descr[2] = "Sorts processes using decreasing ordering on their PID";
-    sorting_modes[4] = "PID (decr)"; modes_descr[3] = "Sorts processes using lexicograhical order of their owner's usernames";
+    modes_items[0] = "[0] cmd"; modes_descr[0] = "Sorts processes using lexicographical order of their command line";
+    modes_items[1] = "[1] PID (incr)"; modes_descr[1] = "Sorts processes using increasing ordering on their PID";
+    modes_items[2] = "[2] PID (decr)"; modes_descr[2] = "Sorts processes using decreasing ordering on their PID";
+    modes_items[3] = "[3] Username"; modes_descr[3] = "Sorts processes using lexicograhical order of their owner's usernames";
+    modes_items[4] = "[4] thread count (incr)"; modes_descr[4] = "Sorts processes using decreasing ordering on their thread count";
+    modes_items[5] = "[5] thread count (decr)"; modes_descr[5] = "Sorts processes using decreasing ordering on their thread count";
+    // initialize with modes defined in process_info.h
+    int (**sorting_modes)(const void*, const void*) = malloc(nmodes * sizeof(*sorting_modes));
+    sorting_modes[0] = cmp_commands;
+    sorting_modes[1] = cmp_pid_incr;
+    sorting_modes[2] = cmp_pid_decr;
+    sorting_modes[3] = cmp_usernames;
+    sorting_modes[4] = cmp_nthreads_inc;
+    sorting_modes[5] = cmp_nthreads_decr;
 
     // creates a timer that generates SIGALRM each interval
     // this timer is used to periodically refresh the windows displaying data
@@ -192,6 +202,10 @@ int main(int argc, char **argv) {
     cbreak();
     keypad(stdscr, TRUE);
     noecho();
+    start_color(); // start using colors
+    // define a green on black color pair
+    short green_on_black = 1;
+    init_pair(green_on_black, COLOR_GREEN, COLOR_BLACK);
 
     // create three indipendent windows to handle memory, cpu and process display
     // The first tho occupy each a quarter of the screen, while the third fills the rest
@@ -216,6 +230,7 @@ int main(int argc, char **argv) {
     // interrupted by SIGALRMs each interval
     gboolean run = TRUE;
     gboolean menu_shown = FALSE; // TRUE if the menu below must be printed (updates to data are not shown to the user)
+    gboolean searching = FALSE; // flag set iff a searching is in progress
     while(run == TRUE) {
         if(menu_shown == TRUE) {
             print_menu(menuitems, menudescr, mainmenu_size);
@@ -231,21 +246,10 @@ int main(int argc, char **argv) {
                 break;
             case 's': {
                 // print the submenu and change the soring mode
-                print_menu(sorting_modes, modes_descr, nmodes);
+                print_menu(modes_items, modes_descr, nmodes);
                 char s = getch();
-                switch(s) {
-                    case '0':
-                        switch_sortmode(tasks, cmp_commands);
-                        break;
-                    case '1':
-                        switch_sortmode(tasks, cmp_pid_incr);
-                        break;
-                    case '2':
-                        switch_sortmode(tasks, cmp_pid_decr);
-                        break;
-                    case '3':
-                        switch_sortmode(tasks, cmp_usernames);
-                        break;
+                if(s >= '0' && s <= '0' + nmodes - 1) {
+                    switch_sortmode(tasks, sorting_modes[s - '0']);
                 }
                 break;
             }
@@ -254,13 +258,34 @@ int main(int argc, char **argv) {
                 // unimplemented
                 break;
             case 'f': {
-                // search for a pattern in the process list
-                attron(A_BOLD);
-                mvaddstr(LINES - 1, 1, "Pattern: ");
-                attroff(A_BOLD);
-                find_pattern();
-                menu_shown = FALSE;
-                timer_settime(alarm, 0, &spec, NULL);
+                if(searching == TRUE) {
+                    // 'f' was pressed to quit the search view: reset all highlighted processes to normal
+                    for(int i = 0; i < tasks->num_ps; i++) {
+                        Task *t = &g_array_index(tasks->ps, Task, i);
+                        if(t->highlight == TRUE) {
+                            t->highlight = FALSE;
+                        }
+                    }
+                    searching = FALSE;
+                    // clears the search line (LINES - 1)
+                    wmove(stdscr, LINES - 1, 0);
+                    wclrtoeol(stdscr);
+                }
+                else {
+                    // search for a pattern in the process list
+                    attron(COLOR_PAIR(green_on_black));
+                    mvaddstr(LINES - 1, 1, "Pattern: ");
+                    find_pattern();
+                    attroff(COLOR_PAIR(green_on_black));
+                    // hide the menu
+                    menu_shown = FALSE;
+                    // set the searching flag
+                    searching = TRUE;
+                    // restart the timer
+                    timer_settime(alarm, 0, &spec, NULL);
+                    // update the window immediately (otherwise it will refresh at the next timer tick)
+                    proc_window_update(procwin, tasks);
+                }
                 break;
             }
             case 'm': // toggles menu visibility
@@ -279,7 +304,7 @@ int main(int argc, char **argv) {
     // free menu items and descriptions
     free(menuitems);
     free(menudescr);
-    free(sorting_modes);
+    free(modes_items);
     free(modes_descr);
     // deletes the alarm timer
     timer_delete(alarm);

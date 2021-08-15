@@ -11,6 +11,6 @@ on deltas with the previous iteration, instead of having local fixed-sized buffe
 * Handle SIGINT to terminate cleanly the process (either with a signal handler or some dedicated thread)
 * Maybe use a GSequence instead of a GSList for the process's open file descriptor list
 (or any data structure optimized for searches and easily maintained ordered, really)
-* Fix the search highlighting to make it persistent until a certain key is pressed
 * put commands onscreen (for instance on the last line, similar to htop). It could even be
 a dynamic command prompt used to control the program's behaviour
+* Check the implementation of dead processes removal between updates (seems not to work properly)

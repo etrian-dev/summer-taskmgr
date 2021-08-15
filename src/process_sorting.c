@@ -49,3 +49,11 @@ int cmp_usernames(const void *a, const void *b) {
     // all usernames are lowercase [verify?], so strcasecmp isn't needed
     return strcmp(ta->username, tb->username);
 }
+// increasing thread count
+int cmp_nthreads_inc(const void *a, const void *b) {
+    return ((Task*)a)->num_threads - ((Task*)b)->num_threads;
+}
+// decreasing thread count
+int cmp_nthreads_decr(const void *a, const void *b) {
+    return ((Task*)b)->num_threads - ((Task*)a)->num_threads;
+}
