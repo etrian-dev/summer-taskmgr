@@ -79,23 +79,35 @@ int print_menu(char **items, char **descriptions, const int nitems) {
     return 0;
 }
 /**
+ * \brief Finds a pattern in the processes's command lines
  *
+ * When the search mode is activated by pressing 'f' the user is prompted to
+ * write a pattern to be searched in the command lines of processes in the task
+ * list. If the pattern entered is a substring of a command line then that
+ * process is marked as highlighted until 'f' is pressed again to exit search mode
  */
 void find_pattern(void) {
-    int c;
     char *pattern = calloc(BUF_BASESZ, sizeof(char));
     gsize alloc_len = BUF_BASESZ;
-    const gsize xoff = strlen("Pattern: ");
     gsize currlen = 0;
+    const gsize xoff = strlen("Pattern: "); // for echoing characters typed after the prompt message
+    int c;
     while((c = getch()) != '\n') {
         if(alloc_len <= currlen) {
             alloc_len *= 2;
             pattern = realloc(pattern, alloc_len);
         }
+        // ascii characters can appear in the pattern
         if(isalnum(c)) {
             pattern[currlen] = (char)c;
             currlen++;
             mvaddch(LINES - 1, xoff + currlen, (char)c);
+        }
+        // handle backspaces to allow editing the pattern
+        if(c == KEY_BACKSPACE && currlen > 0) {
+            mvdelch(LINES - 1, xoff + currlen);
+            pattern[currlen] = '\0';
+            currlen--;
         }
     }
     // Hightlight matching paths
@@ -117,7 +129,7 @@ void find_pattern(void) {
     mvprintw(LINES - 1, xoff + currlen + 5,
         "Processes matching \"%s\": %d (press 'f' to quit)", pattern, matches);
     free(pattern);
-    refresh();
+    wrefresh(stdscr);
 }
 
 /**
@@ -185,6 +197,7 @@ int main(int argc, char **argv) {
     g_array_set_clear_func(tasks->ps, clear_task);
     // default process sorting criteria: lexicographical order of command lines
     tasks->sortfun = cmp_commands;
+    tasks->cursor_start = 0; // the cursor starts at the first process
     pthread_mutex_init(&tasks->mux_memdata, NULL);
     pthread_cond_init(&tasks->cond_updating, NULL);
 
@@ -199,10 +212,12 @@ int main(int argc, char **argv) {
 
     // inititalize ncurses with some useful additions
     initscr();
+    if(has_colors() == TRUE) {
+        start_color(); // start using colors
+    }
     cbreak();
     keypad(stdscr, TRUE);
     noecho();
-    start_color(); // start using colors
     // define a green on black color pair
     short green_on_black = 1;
     init_pair(green_on_black, COLOR_GREEN, COLOR_BLACK);
@@ -211,7 +226,7 @@ int main(int argc, char **argv) {
     // The first tho occupy each a quarter of the screen, while the third fills the rest
     memwin = newwin(LINES/4, COLS, 0, 0);
     cpuwin = newwin(LINES/4, COLS, LINES/4, 0);
-    procwin = newwin(LINES/2, COLS, LINES/2, 0);
+    procwin = newwin(LINES/2, COLS, LINES/2 - 1, 0);
 
     // declare the timer interval and starting offset
     struct timespec interval; // sends SIGALRM every second
@@ -231,13 +246,15 @@ int main(int argc, char **argv) {
     gboolean run = TRUE;
     gboolean menu_shown = FALSE; // TRUE if the menu below must be printed (updates to data are not shown to the user)
     gboolean searching = FALSE; // flag set iff a searching is in progress
+    int key = 0, last_key = 0; // remembers the last key pressed
+    // This is needed to have a shorter timer interval only when the user is scolling
     while(run == TRUE) {
         if(menu_shown == TRUE) {
             print_menu(menuitems, menudescr, mainmenu_size);
         }
         // gets user input (be aware that this works whether the menu is shown or not)
-        int c = getch();
-        switch(c) {
+        key = getch();
+        switch(key) {
             case 'q':
                 run = FALSE;
                 break;
@@ -298,7 +315,76 @@ int main(int argc, char **argv) {
                 else {
                     timer_settime(alarm, 0, &spec, NULL);
                 }
+            // handling of the process cursor movement (to simulate a scrollable window)
+            case KEY_DOWN:
+                // if a key is pressed
+                if(tasks->cursor_start < tasks->num_ps - 1)
+                    tasks->cursor_start++;
+                wrefresh(procwin);
+                break;
+            case KEY_UP:
+                if(tasks->cursor_start > 0)
+                    tasks->cursor_start--;
+                wrefresh(procwin);
+                break;
+            case KEY_END:
+                tasks->cursor_start = tasks->num_ps - 1;
+                wrefresh(procwin);
+                break;
+            case KEY_HOME:
+                tasks->cursor_start = 0;
+                wrefresh(procwin);
+                break;
+            case KEY_NPAGE: {
+                int prows, pcols;
+                getmaxyx(procwin, prows, pcols);
+                tasks->cursor_start += prows - 4;
+                if(tasks->cursor_start > tasks->num_ps) {
+                    tasks->cursor_start = tasks->num_ps - 1;
+                }
+                wrefresh(procwin);
+                break;
+            }
+            case KEY_PPAGE: {
+                int prows, pcols;
+                getmaxyx(procwin, prows, pcols);
+                tasks->cursor_start -= prows - 4;
+                if(tasks->cursor_start  < 0) {
+                    tasks->cursor_start = 0;
+                }
+                wrefresh(procwin);
+                break;
+            }
         }
+
+        // if both the last pressed key and the current are scrolling keys (one of those listed above)
+        // shorten the timer tick and restart it
+        if( (key == KEY_DOWN || key == KEY_UP
+            || key == KEY_NPAGE || key == KEY_PPAGE
+            || key == KEY_END || key == KEY_HOME)
+            && (last_key == KEY_DOWN || last_key == KEY_UP
+            || last_key == KEY_NPAGE || last_key == KEY_PPAGE
+            || last_key == KEY_END || last_key == KEY_HOME)) {
+            struct itimerspec short_tick;
+            short_tick.it_interval.tv_sec = 0;
+            short_tick.it_interval.tv_nsec = 250000000;
+            short_tick.it_value.tv_sec = 0;
+            short_tick.it_value.tv_nsec = 100000;
+            timer_settime(alarm, 0, &short_tick, &spec);
+        }
+        // if the current key is not a scrolling key and the last key was
+        // then reset the timer to the normal tick
+        if( (key != KEY_DOWN && key == KEY_UP
+            && key != KEY_NPAGE && key != KEY_PPAGE
+            && key != KEY_END && key != KEY_HOME)
+            && (last_key == KEY_DOWN || last_key == KEY_UP
+            || last_key == KEY_NPAGE || last_key == KEY_PPAGE
+            || last_key == KEY_END || last_key == KEY_HOME)) {
+            timer_settime(alarm, 0, &spec, NULL);
+        }
+
+        // update the last key pressed
+        last_key = key;
     }
 
     // free menu items and descriptions

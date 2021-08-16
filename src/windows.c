@@ -102,6 +102,11 @@ void cpu_window_update(WINDOW *win, CPU_data_t *cpu_usage) {
 void proc_window_update(WINDOW *win, TaskList *tasks) {
     werase(win);
 
+    short table_header_color = 4;
+    short cursor_highlight_color = 5;
+    init_pair(table_header_color, COLOR_CYAN, COLOR_WHITE);
+    init_pair(cursor_highlight_color, COLOR_WHITE, COLOR_BLUE);
+
     int lines, cols;
     getmaxyx(win, lines, cols);
     int yoff = 1, xoff = 1;
@@ -121,27 +126,38 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
 
     snprintf(ln, LINE_MAXLEN, "processes: %ld\tthreads: %ld", tasks->num_ps, tasks->num_threads);
     snprintf(ln2, LINE_MAXLEN,
-        "%-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s",
+        "%-10s | %-10s | %-20s | %-5s  | %-5s | %-10s | %-10s | %-10s",
         "PID", "PPID", "USER", "STATE", "NICE", "THREADS", "VSZ (GiB)", "CMD");
 
+    wattr_on(win, A_BOLD, NULL);
     mvwaddstr(win, yoff++, xoff, ln);
-    mvwaddstr(win, yoff++, xoff, ln2);
+    wattr_off(win, A_BOLD, NULL);
 
-    for(int i = yoff; i < lines - 1; i++) {
+    wattr_on(win, A_STANDOUT, NULL);
+    mvwaddstr(win, yoff++, xoff, ln2);
+    wattr_off(win, A_STANDOUT, NULL);
+
+    int i = 0;
+    while((i < lines - yoff - 1) || (tasks->cursor_start + i == tasks->num_ps)) {
         char procline[LINE_MAXLEN];
-        Task *t = &(g_array_index(tasks->ps, Task, i));
+        Task *t = &(g_array_index(tasks->ps, Task, tasks->cursor_start + i));
         if(t->visible == TRUE) {
             snprintf(procline, LINE_MAXLEN,
-                     "%-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-30s",
+                     "%-10d | %-10d | %-20s | %-5c | %-5ld | %-10ld | %-10ld | %-30s",
                      t->pid, t->ppid, t->username, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
+            attr_t proc_attrs = 0x0;
             if(t->highlight == TRUE) {
-                wattr_on(win, A_STANDOUT, NULL);
+                proc_attrs |= A_STANDOUT;
             }
-            mvwaddstr(win, i, xoff, procline);
-            if(t->highlight == TRUE) {
-                wattr_off(win, A_STANDOUT, NULL);
+            // place the cursor on the first process being displayed (overrides the matching highlight)
+            if(i == 0) {
+                proc_attrs = COLOR_PAIR(cursor_highlight_color);
             }
+            wattr_on(win, proc_attrs, NULL);
+            mvwaddnstr(win, i + yoff, xoff, procline, cols - 2); // adds the string truncated at the window's width - 2
+            wattr_off(win, proc_attrs, NULL);
         }
+        i++;
     }
 
     tasks->is_busy = FALSE;

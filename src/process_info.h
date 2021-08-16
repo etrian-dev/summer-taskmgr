@@ -35,6 +35,7 @@ struct tasklist {
     pthread_cond_t cond_updating;
     gboolean is_busy;
     int (*sortfun)(const void*, const void*);
+    long int cursor_start; // the first process to be displayed (to implement scrolling)
 };
 typedef struct tasklist TaskList;
 
