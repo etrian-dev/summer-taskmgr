@@ -1,8 +1,8 @@
 ********************************************
 * Write documentation comments for Doxygen!*
 ********************************************
-
-* Handle input for filtering processes
+* Fix thread count
+* Search in PID, username and other fields for patterns
 * Calculate per-process CPU usage (load avg)
 * individual per-core CPU usage bars, similar to the memory ones
 * Make the drawing process more efficient by having data alloc'd on the heap that is modified based

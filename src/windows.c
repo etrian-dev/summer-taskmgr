@@ -126,7 +126,7 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
 
     snprintf(ln, LINE_MAXLEN, "processes: %ld\tthreads: %ld", tasks->num_ps, tasks->num_threads);
     snprintf(ln2, LINE_MAXLEN,
-        "%-10s | %-10s | %-20s | %-5s  | %-5s | %-10s | %-10s | %-10s",
+        "%-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s",
         "PID", "PPID", "USER", "STATE", "NICE", "THREADS", "VSZ (GiB)", "CMD");
 
     wattr_on(win, A_BOLD, NULL);
@@ -143,7 +143,7 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
         Task *t = &(g_array_index(tasks->ps, Task, tasks->cursor_start + i));
         if(t->visible == TRUE) {
             snprintf(procline, LINE_MAXLEN,
-                     "%-10d | %-10d | %-20s | %-5c | %-5ld | %-10ld | %-10ld | %-30s",
+                     "%-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-30s",
                      t->pid, t->ppid, t->username, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
             attr_t proc_attrs = 0x0;
             if(t->highlight == TRUE) {

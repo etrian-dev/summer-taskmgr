@@ -1,0 +1,18 @@
+{
+    "main_menu": {
+        "quit": ["q", "Quit the program"],
+        "help": ["h", "Help screen"],
+        "sort": ["s", "Set the process sorting criteria"],
+        "freeze": ["i", "Freeze the screen"],
+        "find": ["f", "Find a pattern in the process list"],
+        "menu": ["m", "Show/Hide the menu"]
+    },
+    "sort_menu": {
+        "command": [0, "Lexicographical order on the command"],
+        "username": [1, "Lexicographical order on the username"],
+        "PID incr": [2, "Increasing PID value"],
+        "PID decr": [3, "Decreasing PID value"],
+        "thread incr": [4, "Increasing thread count"],
+        "thread decr": [5, "Decreasing thread count"]
+    }
+}

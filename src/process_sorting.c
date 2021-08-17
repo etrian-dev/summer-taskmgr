@@ -25,14 +25,6 @@ int cmp_commands(const void *a, const void *b) {
     // like strcmp, but ignores case
     return strcasecmp(ta->command, tb->command);
 }
-// pid increasing sorting
-int cmp_pid_incr(const void *a, const void *b) {
-    return ((Task*)a)->pid - ((Task*)b)->pid;
-}
-// pid decreasing sorting
-int cmp_pid_decr(const void *a, const void *b) {
-    return ((Task*)b)->pid - ((Task*)a)->pid;
-}
 // lexicographical username sorting (NULL usernames last)
 int cmp_usernames(const void *a, const void *b) {
     Task *ta = (Task*)a;
@@ -49,11 +41,19 @@ int cmp_usernames(const void *a, const void *b) {
     // all usernames are lowercase [verify?], so strcasecmp isn't needed
     return strcmp(ta->username, tb->username);
 }
+// pid increasing sorting
+int cmp_pid_incr(const void *a, const void *b) {
+    return ((Task*)b)->pid - ((Task*)a)->pid;
+}
+// pid decreasing sorting
+int cmp_pid_decr(const void *a, const void *b) {
+    return ((Task*)a)->pid - ((Task*)b)->pid;
+}
 // increasing thread count
 int cmp_nthreads_inc(const void *a, const void *b) {
-    return ((Task*)a)->num_threads - ((Task*)b)->num_threads;
+    return ((Task*)b)->num_threads - ((Task*)a)->num_threads;
 }
 // decreasing thread count
 int cmp_nthreads_decr(const void *a, const void *b) {
-    return ((Task*)b)->num_threads - ((Task*)a)->num_threads;
+    return ((Task*)a)->num_threads - ((Task*)b)->num_threads;
 }

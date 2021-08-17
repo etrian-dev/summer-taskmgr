@@ -18,6 +18,8 @@
 void clear_task(void *tp) {
     Task *task_ptr = (Task*)tp;
     if(task_ptr->command) free(task_ptr->command);
+    if(task_ptr->username) free(task_ptr->username);
+    if(task_ptr->open_fds) g_slist_free(task_ptr->open_fds);
 }
 
 int compare_PIDs(const void *a, const void *b) {
@@ -41,8 +43,12 @@ gboolean get_processes_info(TaskList *tasks) {
     // this expensive passage is needed to perform several faster binary searches on the array
     int (*oldsort)(const void*, const void*) = tasks->sortfun;
     g_array_sort(tasks->ps, cmp_pid_incr);
+
+    tasks->num_threads = 0;
+
     // resets the presence flag of each process to mark it as terminated
-    for(int i; i < tasks->num_ps; i++) {
+    int i;
+    for(i = 0; i < tasks->num_ps; i++) {
         Task *t = &g_array_index(tasks->ps, Task, i);
         t->present = FALSE;
     }
@@ -119,7 +125,7 @@ gboolean get_processes_info(TaskList *tasks) {
         }
 
         // Discard terminated processes
-        int i = 0;
+        i = 0;
         while(i < tasks->num_ps) {
             Task *t = &g_array_index(tasks->ps, Task, i);
             if(t->present == FALSE) {
@@ -128,11 +134,10 @@ gboolean get_processes_info(TaskList *tasks) {
                 // in the array is used to fill the freed spot, so it must be examined
                 // by not incrementing i in this iteration
                 (tasks->num_ps)--;
-                tasks->num_threads -= t->num_threads;
-                clear_task(t);
                 t = NULL;
             }
             else {
+                tasks->num_threads += t->num_threads;
                 i++;
             }
         }
@@ -140,7 +145,6 @@ gboolean get_processes_info(TaskList *tasks) {
         for(i = 0; i < newprocs_sz; i++) {
             Task newt = g_array_index(newprocs, Task, i);
             g_array_append_val(tasks->ps, newt);
-            // add its threads to the count
             tasks->num_threads += newt.num_threads;
         }
         // then update the number of processes
