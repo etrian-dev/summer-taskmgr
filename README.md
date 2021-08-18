@@ -7,8 +7,10 @@ A simple terminal-based task manager written in C, with a TUI interface written 
 - [libjansson](https://digip.org/jansson/)
 - linux-specific headers, such as `unistd.h`
 ## Compiling
-Just `make` and it should be fine, given the prerequisites above are satisfied.
-An executable named ./a.out will be produced in the base directory of the repository
+To build the program from sources you need the autools. In the base directory type
+`autoreconf -i && ./configure && make`. The executable will be in the src directory.  
+Because the menu file path is hardcoded and not yet part of the build system needs to 
+be placed in the directory where the executable runs.
 ## Execution
 The task manager has a main screen containing memory and cpu usage statistics
 and a scrollable process list. A simple menu (hidden at startup) allows the user to
@@ -36,15 +38,15 @@ The submenu opened by selecting 's' contains the implemented sorting modes for p
 - thread decr (3): Sorts processes in decreasing order of their thread count
 ### Usage
 To access the menu type 'm'. You will be presented with the set of options described above.
-Finding patterns works properly (and it's probably more useful) without entering the menu.
+Finding patterns works properly (and it's probably more useful) without entering the menu.  
 A search is performed by typing 'f' and then a search pattern up to a newline (sent by <Enter>).
 The pattern provided is searched as a substring of any process command line currently in the task list.
 Any process whose command line matches pattern is then highlighted until 'f' is pressed to exit the search mode.
 The number of matching processes is printed on the same line as the search prompt.
-No other types of filtering or refined searches is currently implemented.
+No other types of filtering or refined searches is currently implemented.  
 To navigate the process list use the up/down arrow keys, page up/down to scroll one page
 (puts the cursor on the entry past the last visible process) and the home/end keys to
-jump to the first/last process in the list.
+jump to the first/last process in the list.  
 The window refresh rate is variable, meaning that it increases as soon as two consecutive
 scrolling keys are pressed to enable smooth scrolling, but falls back to normal (1s) when
 a key other than a scolling key is pressed. This tradeoff between smoothness and cpu usage
