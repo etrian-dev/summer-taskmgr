@@ -8,24 +8,29 @@
 #define BUF_BASESZ 256
 
 // defines a structure to hold cpu statistics
-typedef struct cpu_data_t {
-    char *model;
-    int num_cores;
+struct core_data_t {
     // previous (unscaled) data points
     unsigned long int prev_usr;
     unsigned long int prev_usr_nice;
     unsigned long int prev_sys;
     unsigned long int prev_idle;
     unsigned long int prev_total;
-    // current cpu usage percentages (calculated on deltas)
+    // current core usage percentages (calculated on deltas)
     float perc_usr;
     float perc_usr_nice;
     float perc_sys;
     float perc_idle;
-    // syncronization variables
-    pthread_mutex_t mux_memdata;
-    pthread_cond_t cond_updating;
-    gboolean is_busy;
+};
+
+typedef struct cpu_data_t {
+	char *model;					///< CPU model, as read from /proc/cpuinfo
+	int num_cores;					///< The cpu's number of cores
+	struct core_data_t *percore;	///< The per-core usage statistics
+	struct core_data_t total;		///< The usage statistics of the whole CPU
+	// syncronization variables
+	pthread_mutex_t mux_memdata;
+	pthread_cond_t cond_updating;
+	gboolean is_busy;
 } CPU_data_t;
 
 // gets statistics about the cpu usage

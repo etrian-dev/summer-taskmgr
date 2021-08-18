@@ -13,7 +13,7 @@
 // function that deals with meters included in the memory window
 void mem_window_update(WINDOW *win, Mem_data_t *mem_usage) {
     werase(win);
-    // a progress bar filled with a number of '#' correspondent to the percentage of
+    // a progress bar filled with a number of '#' that matches the percentage of
     // memory available in the system. A scale is drawn as well to mark the quarters of the bar
     char ram_bar[BARLEN];
     char swp_bar[BARLEN];
@@ -48,7 +48,7 @@ void mem_window_update(WINDOW *win, Mem_data_t *mem_usage) {
     mvwaddstr(win, yoff++, xoff, scale);
     mvwprintw(win, yoff++, xoff, values);
 
-    // does the same thing, but for swap (resets the bar first)
+    // does the same thing, but for swap
     percent = 100 - (mem_usage->swp_free * 100)/(float)mem_usage->swp_tot;
     memset(swp_bar + 1, '#', percent * sizeof(char));
     snprintf(values, LINE_MAXLEN,
@@ -71,8 +71,18 @@ void mem_window_update(WINDOW *win, Mem_data_t *mem_usage) {
 void cpu_window_update(WINDOW *win, CPU_data_t *cpu_usage) {
     werase(win);
     // erase the window's contents
-    char ln[LINE_MAXLEN];
-    char ln2[LINE_MAXLEN];
+    char make_model[LINE_MAXLEN];
+    char totals[LINE_MAXLEN];
+    
+    int core = 0;
+    // alloc and initialize one bar per core
+    char **core_bars = malloc(cpu_usage->num_cores * sizeof(char*));
+    char scale[BARLEN]; // one scale for all the bars
+	for(core = 0; core < cpu_usage->num_cores; core++) {
+		core_bars[core] = malloc(BARLEN * sizeof(char));
+		init_bars(core_bars[core], scale);
+		memset(core_bars[core] + 1, '#', ((long)round(100.0 - cpu_usage->percore[core].perc_idle)) * sizeof(char));
+	}
 
     // about to access shared data: lock
     pthread_mutex_lock(&cpu_usage->mux_memdata);
@@ -81,19 +91,24 @@ void cpu_window_update(WINDOW *win, CPU_data_t *cpu_usage) {
     }
     cpu_usage->is_busy = TRUE;
 
-    snprintf(ln, LINE_MAXLEN, "Model: \'%s\'\tCores: %d", cpu_usage->model, cpu_usage->num_cores);
+    snprintf(make_model, LINE_MAXLEN, "Model: \'%s\'\tCores: %d", cpu_usage->model, cpu_usage->num_cores);
 
-    snprintf(ln2, LINE_MAXLEN,
+    snprintf(totals, LINE_MAXLEN,
              "CPU%% usr: %.3f\tnice: %.3f\tsys: %.3f\tidle: %.3f",
-              cpu_usage->perc_usr, cpu_usage->perc_usr_nice, cpu_usage->perc_sys, cpu_usage->perc_idle);
+              cpu_usage->total.perc_usr, cpu_usage->total.perc_usr_nice, 
+              cpu_usage->total.perc_sys, cpu_usage->total.perc_idle);
 
     cpu_usage->is_busy = FALSE;
     pthread_cond_signal(&cpu_usage->cond_updating);
     // shared data is not accessed now: unlock
     pthread_mutex_unlock(&cpu_usage->mux_memdata);
 
-    mvwaddstr(win, 1, 1, ln);
-    mvwaddstr(win, 2, 1, ln2);
+    mvwaddstr(win, 1, 1, make_model);
+    for(core = 0; core < cpu_usage->num_cores; core++) {
+		mvwprintw(win, core + 2, 1, "core%d %s (%.3f)", 
+			core, core_bars[core], 100.0 - cpu_usage->percore[core].perc_idle);
+	}
+    mvwaddstr(win, cpu_usage->num_cores + 3, 1, totals);
     // refresh the window to display the contents
     wrefresh(win);
 }

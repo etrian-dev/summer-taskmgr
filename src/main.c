@@ -118,6 +118,8 @@ int main(int argc, char **argv) {
     shared_data.cpu_stats = calloc(1, sizeof(CPU_data_t));
     // sets the number of cores and the model of the CPU just once at startup, since that's unlikely to change
     get_cpu_model(&(shared_data.cpu_stats->model), &(shared_data.cpu_stats->num_cores));
+    // initialize the per-core statistics array
+    shared_data.cpu_stats->percore = calloc(shared_data.cpu_stats->num_cores, sizeof(struct core_data_t));
     pthread_mutex_init(&(shared_data.cpu_stats->mux_memdata), NULL);
     pthread_cond_init(&(shared_data.cpu_stats->cond_updating), NULL);
 
