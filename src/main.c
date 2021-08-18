@@ -10,7 +10,6 @@
 #include <pthread.h>
 
 #include <ncurses.h>
-#include <menu.h> // for menus
 #include <jansson.h> // to parse JSON
 
 #include "mem_info.h"
