@@ -90,9 +90,9 @@ int main(int argc, char **argv) {
     // initialize the array of function pointers with all the modes defined in process_info.h
     int (**sorting_modes)(const void*, const void*) = malloc(sortmenu_sz * sizeof(*sorting_modes));
     sorting_modes[0] = cmp_commands;
-    sorting_modes[1] = cmp_pid_incr;
-    sorting_modes[2] = cmp_pid_decr;
-    sorting_modes[3] = cmp_usernames;
+    sorting_modes[1] = cmp_usernames;
+    sorting_modes[2] = cmp_pid_incr;
+    sorting_modes[3] = cmp_pid_decr;
     sorting_modes[4] = cmp_nthreads_inc;
     sorting_modes[5] = cmp_nthreads_decr;
 
@@ -107,6 +107,8 @@ int main(int argc, char **argv) {
     pthread_sigmask(SIG_BLOCK, &masked_sigs, NULL);
 
     struct taskmgr_data_t shared_data;
+    // scaling is activated by default
+    shared_data.rawdata = 1;
 
     // Initialize the memory data structure
     shared_data.mem_stats = calloc(1, sizeof(Mem_data_t));
@@ -249,6 +251,14 @@ int main(int argc, char **argv) {
                 else {
                     timer_settime(alarm, 0, &spec, NULL);
                 }
+            case 'r': // show/hide raw values
+                if(shared_data.rawdata == 0) {
+                    shared_data.rawdata = 1;
+                }
+                else if(shared_data.rawdata == 1) {
+                    shared_data.rawdata = 0;
+                }
+                break;
             // handling of the process cursor movement (to simulate a scrollable window)
             case KEY_DOWN:
                 // if a key is pressed

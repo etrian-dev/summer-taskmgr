@@ -23,6 +23,8 @@ struct taskmgr_data_t {
     Mem_data_t *mem_stats;
     CPU_data_t *cpu_stats;
     TaskList *tasks;
+    // flag to be set to display raw data reads, instead of scaled ones
+    int rawdata;
 };
 
 // Utility functions: see utilities.c

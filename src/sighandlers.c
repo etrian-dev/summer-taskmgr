@@ -25,8 +25,9 @@
  */
 void alarm_handler( WINDOW *memwin, Mem_data_t *mem_stats,
                     WINDOW *cpuwin, CPU_data_t *cpu_stats,
-                    WINDOW *procwin, TaskList *tasks) {
-    mem_window_update(memwin, mem_stats);
+                    WINDOW *procwin, TaskList *tasks,
+                    int flag_rawdata) {
+    mem_window_update(memwin, mem_stats, flag_rawdata);
     cpu_window_update(cpuwin, cpu_stats);
     proc_window_update(procwin, tasks);
 }
@@ -49,7 +50,8 @@ void *signal_thread(void *param) {
         if(delivered_sig == SIGALRM) {
             alarm_handler(  data->memwin, data->mem_stats,
                             data->cpuwin, data->cpu_stats,
-                            data->procwin, data->tasks);
+                            data->procwin, data->tasks,
+                            data->rawdata);
         }
         if(delivered_sig == SIGINT) {
             _exit(0);

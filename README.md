@@ -29,6 +29,7 @@ The default file lists the following options for the main menu:
 - Freeze (i): Freeze the screen (unimplemented)
 - Find (f): Find a pattern in the process list
 - Menu (m): Show/Hide the menu
+- Raw (r): Display raw values read from /proc instead of scaled ones
 The submenu opened by selecting 's' contains the implemented sorting modes for processes:
 - Command (0): Sorts processes in lexicographical order of their command line
 - Username (1): Sorts processes in lexicographical order of their owner's username

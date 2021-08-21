@@ -14,3 +14,4 @@ on deltas with the previous iteration, instead of having local fixed-sized buffe
 * put commands onscreen (for instance on the last line, similar to htop). It could even be
 a dynamic command prompt used to control the program's behaviour
 * Check the implementation of dead processes removal between updates (seems not to work properly)
+* Implement menu location reading from the /share subdir or the base directory to ease testing

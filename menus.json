@@ -5,7 +5,8 @@
         "sort": ["s", "Set the process sorting criteria"],
         "freeze": ["i", "Freeze the screen"],
         "find": ["f", "Find a pattern in the process list"],
-        "menu": ["m", "Show/Hide the menu"]
+        "menu": ["m", "Show/Hide the menu"],
+        "raw": ["r", "Show raw values"]
     },
     "sort_menu": {
         "command": [0, "Lexicographical order on the command"],
