@@ -74,7 +74,7 @@ gboolean get_processes_info(TaskList *tasks) {
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/stat", pid);
                 gboolean stat_ret = get_stat_details(&newproc, path_statfile);
                 // get the full command of this process (with options and args)
-                snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/cmdline", pid);
+                snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/comm", pid);
                 gboolean cmd_ret = get_cmdline(&newproc, path_statfile);
                 // get a list of open file descriptors
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/fd", pid);
@@ -203,10 +203,11 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
 }
 
 /**
- * \brief Reads the full command line of this process
+ * \brief Reads the command line of this process
  *
- * Given a process whose PID is x, this function reads the file /proc/x/cmdline to
- * obtain a NULL-separated series of strings that correspond to the process's full
+ * Given a process whose PID is x, this function reads the file /proc/x/comm to
+ * obtain the command name. If the string read from this file is 16 bytes long then it's
+ * likely to have been truncated, so /proc/x/cmdline is used instead
  * command line (with arguments). The command line is truncated at BUF_BASESZ - 1 characters
  * \param [in,out] proc The pointer to the Task whose command line should be read
  * \param [in] cmd_filepath The path the the process's cmdline file (/proc/PID/cmdline)
@@ -214,24 +215,52 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
  */
 gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
     FILE *fp = fopen(cmd_filepath, "r");
-    char buf[BUF_BASESZ]; // a buffer hopefully long enough
-    memset(buf, 0 , BUF_BASESZ * sizeof(char));
     if(fp) {
-        if(fgets(buf, BUF_BASESZ, fp)) {
-            // the command line args are separated by NULLs. This loop substitutes each
-            // of them with blanks (leaving the string terminator untouched)
-            for(int i = 0; i < BUF_BASESZ - 1; i++) {
-                if(buf[i] == '\0' && buf[i+1] != '\0') {
-                    buf[i] = ' ';
-                }
-            }
-            // the command line is duplicated into the task's state
-            proc->command = strdup(buf);
+        // the buffer to get the result
+        char *buf = NULL;
+        if((buf = calloc(BUF_BASESZ, sizeof(char))) == NULL) {
+            proc->command = NULL;
+            return FALSE;
         }
-        else {
-            // either no command line or an error in reading it
+        // based on the return value and the lenght of the string read takes an action
+        char *result = fgets(buf, BUF_BASESZ, fp);
+        if(result == NULL) {
             proc->command = NULL;
         }
+        else {
+            // If the command is shorter than the max lenght (15 + null terminator)
+            // then the comm hasn't been truncated. If a command's lenght is
+            // greater or equal to that, then it's likely to have been truncated.
+            // So, the full command is fetched trough /proc/[pid]/cmdline (if possible)
+            // and it's used instead. If the full command is unavailable the truncated
+            // command name is used instead
+            if(strlen(buf) >= 15 && strstr(cmd_filepath, "cmdline") == NULL) {
+                char full_cmdline_path[BUF_BASESZ];
+                snprintf(full_cmdline_path, BUF_BASESZ, "/proc/%d/cmdline", proc->pid);
+                if(get_cmdline(proc, full_cmdline_path) == TRUE) {
+                    // the command line args are separated by NULLs. This loop substitutes each
+                    // of them with blanks (leaving the string terminator untouched)
+                    int i = 1;
+                    while(i < BUF_BASESZ) {
+                        // two NULLs in a row mean the end of the string
+                        if(proc->command[i-1] == '\0' && proc->command[i] == '\0') {
+                            break;
+                        }
+                        // one NULL and then a non-NULL character mean an argument separator
+                        if(proc->command[i-1] == '\0' && proc->command[i] != '\0') {
+                            proc->command[i-1] = ' ';
+                        }
+                        i++;
+                    }
+                }
+            }
+            else {
+                // the command line is duplicated into the task's state
+                proc->command = strdup(buf);
+                proc->command[strlen(proc->command) - 1] = ' ';
+            }
+        }
+        free(buf);
         fclose(fp);
     }
     return (fp && proc->command ? TRUE : FALSE);

@@ -31,6 +31,8 @@ gboolean get_cpu_info(CPU_data_t *cpudata) {
     gulong idle = 0;
     gulong total = 0;
 
+    int running_processes = 0;
+
     FILE *stat_file = NULL;
     char *buf = malloc(BUF_BASESZ);
     gulong bufsz = BUF_BASESZ;
@@ -40,45 +42,45 @@ gboolean get_cpu_info(CPU_data_t *cpudata) {
         }
         // only the first four fields are relevant: others are just ignored
         // if the values are not read properly they still can be obtained from the sum of cores
-        sscanf(buf, "cpu %lu %lu %lu %lu %*[^\n]\n", &usr, &usr_lowprio, &sys, &idle);
+        if(sscanf(buf, "cpu %lu %lu %lu %lu %*[^\n]\n", &usr, &usr_lowprio, &sys, &idle) == 4) {
+	    // calculate the output values based on the reads
+	    total = usr + usr_lowprio + sys + idle;
+	    // calculate the new values using deltas
+	    float fact = USER_HZ / (float)(total - cpudata->total.prev_total);
+	    cpudata->total.perc_usr = (usr - cpudata->total.prev_usr) * fact;
+	    cpudata->total.perc_usr_nice = (usr_lowprio - cpudata->total.prev_usr_nice) * fact;
+	    cpudata->total.perc_sys = (sys - cpudata->total.prev_sys) * fact;
+	    cpudata->total.perc_idle = (idle - cpudata->total.prev_idle) * fact;
+	    // update the previous values with the current reads
+	    cpudata->total.prev_usr = usr;
+	    cpudata->total.prev_usr_nice = usr_lowprio;
+	    cpudata->total.prev_sys = sys;
+	    cpudata->total.prev_idle = idle;
+	    cpudata->total.prev_total = total;
 
-        // calculate the output values based on the reads
-        total = usr + usr_lowprio + sys + idle;
-        // calculate the new values using deltas
-        float fact = USER_HZ / (float)(total - cpudata->total.prev_total);
-        cpudata->total.perc_usr = (usr - cpudata->total.prev_usr) * fact;
-        cpudata->total.perc_usr_nice = (usr_lowprio - cpudata->total.prev_usr_nice) * fact;
-        cpudata->total.perc_sys = (sys - cpudata->total.prev_sys) * fact;
-        cpudata->total.perc_idle = (idle - cpudata->total.prev_idle) * fact;
-        // update the previous values with the current reads
-        cpudata->total.prev_usr = usr;
-        cpudata->total.prev_usr_nice = usr_lowprio;
-        cpudata->total.prev_sys = sys;
-        cpudata->total.prev_idle = idle;
-        cpudata->total.prev_total = total;
-        
-        // scan all cores cpu[0,1, ...]
-		for(int i = 0; i < cpudata->num_cores; i++) {
-			if(fgets(buf, bufsz, stat_file) == NULL) {
-				return FALSE;
-			}
-			sscanf(buf, "cpu%*d %lu %lu %lu %lu %*[^\n]", &usr, &usr_lowprio, &sys, &idle);
-			
-			// calculate the output values based on the reads
-	        total = usr + usr_lowprio + sys + idle;
-	        // calculate the new values using deltas
-	        float fact = USER_HZ / (float)(total - cpudata->percore[i].prev_total);
-	        cpudata->percore[i].perc_usr = (usr - cpudata->percore[i].prev_usr) * fact;
-	        cpudata->percore[i].perc_usr_nice = (usr_lowprio - cpudata->percore[i].prev_usr_nice) * fact;
-	        cpudata->percore[i].perc_sys = (sys - cpudata->percore[i].prev_sys) * fact;
-	        cpudata->percore[i].perc_idle = (idle - cpudata->percore[i].prev_idle) * fact;
-	        // update the previous values with the current reads
-	        cpudata->percore[i].prev_usr = usr;
-	        cpudata->percore[i].prev_usr_nice = usr_lowprio;
-	        cpudata->percore[i].prev_sys = sys;
-	        cpudata->percore[i].prev_idle = idle;
-	        cpudata->percore[i].prev_total = total;
+	    // scan all cores cpu[0,1, ...]
+	    for(int i = 0; i < cpudata->num_cores; i++) {
+		if(fgets(buf, bufsz, stat_file) == NULL) {
+		    return FALSE;
 		}
+		sscanf(buf, "cpu%*d %lu %lu %lu %lu %*[^\n]", &usr, &usr_lowprio, &sys, &idle);
+
+		// calculate the output values based on the reads
+		total = usr + usr_lowprio + sys + idle;
+		// calculate the new values using deltas
+		float fact = USER_HZ / (float)(total - cpudata->percore[i].prev_total);
+		cpudata->percore[i].perc_usr = (usr - cpudata->percore[i].prev_usr) * fact;
+		cpudata->percore[i].perc_usr_nice = (usr_lowprio - cpudata->percore[i].prev_usr_nice) * fact;
+		cpudata->percore[i].perc_sys = (sys - cpudata->percore[i].prev_sys) * fact;
+		cpudata->percore[i].perc_idle = (idle - cpudata->percore[i].prev_idle) * fact;
+		// update the previous values with the current reads
+		cpudata->percore[i].prev_usr = usr;
+		cpudata->percore[i].prev_usr_nice = usr_lowprio;
+		cpudata->percore[i].prev_sys = sys;
+		cpudata->percore[i].prev_idle = idle;
+		cpudata->percore[i].prev_total = total;
+	    }
+	}
         fclose(stat_file);
     }
     return (stat_file && buf ? TRUE : FALSE);

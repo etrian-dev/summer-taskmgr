@@ -14,7 +14,8 @@ struct task {
     int ppid;
     int userid; // this process owner's user id
     char *username; // this process owner's username (if retrivable by get_username)
-    char *command; // the process's full command line (dynamic, can be NULL) [see man 5 proc]
+    char *command; // the process' command name (dynamic, can be NULL) [see man 5 proc at /proc/[pid]/comm]
+    char **args; // the process'arguments
     GSList *open_fds; // list of this process's open file descriptors
     char state;
     gulong cpu_usr;
@@ -30,6 +31,7 @@ struct tasklist {
     long int num_ps;
     long int num_threads;
     GArray *ps;
+    int procs_running;
     // syncronization variables
     pthread_mutex_t mux_memdata;
     pthread_cond_t cond_updating;

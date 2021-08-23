@@ -4,7 +4,6 @@
 * Fix thread count
 * Search in PID, username and other fields for patterns
 * Calculate per-process CPU usage (load avg)
-* individual per-core CPU usage bars, similar to the memory ones
 * Make the drawing process more efficient by having data alloc'd on the heap that is modified based
 on deltas with the previous iteration, instead of having local fixed-sized buffers (sort of)
 * Maybe use ncurses forms instead of plain text?
@@ -13,5 +12,6 @@ on deltas with the previous iteration, instead of having local fixed-sized buffe
 (or any data structure optimized for searches and easily maintained ordered, really)
 * put commands onscreen (for instance on the last line, similar to htop). It could even be
 a dynamic command prompt used to control the program's behaviour
-* Check the implementation of dead processes removal between updates (seems not to work properly)
 * Implement menu location reading from the /share subdir or the base directory to ease testing
+* Solve additional garbage on the command field of processes, likely from a static buffer or some
+ leaked memory

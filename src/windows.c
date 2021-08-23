@@ -115,32 +115,34 @@ void mem_window_update(WINDOW *win, Mem_data_t *mem_usage, int scaling) {
 }
 /// function that deals with meters included in the cpu window
 void cpu_window_update(WINDOW *win, CPU_data_t *cpu_usage) {
-    werase(win);
-    // erase the window's contents
-    char make_model[LINE_MAXLEN];
-    char totals[LINE_MAXLEN];
-
-    int core = 0;
-    // alloc and initialize one bar per core
-    char **core_bars = malloc(cpu_usage->num_cores * sizeof(char*));
-    char scale[BARLEN]; // one scale for all the bars
-	for(core = 0; core < cpu_usage->num_cores; core++) {
-		core_bars[core] = malloc(BARLEN * sizeof(char));
-		init_bars(core_bars[core], scale);
-		memset(core_bars[core] + 1, '#', ((long)round(100.0 - cpu_usage->percore[core].perc_idle)) * sizeof(char));
-	}
-
+    // First allocate memory for the buffers that will hold data
+    char *model_cores = malloc(LINE_MAXLEN * sizeof(char));
+    if(!model_cores) {
+        return;
+    }
+    char *totals = malloc(55 * sizeof(char));
+    if(!totals) {
+        return;
+    }
     // about to access shared data: lock
     pthread_mutex_lock(&cpu_usage->mux_memdata);
     while(cpu_usage->is_busy == TRUE) {
         pthread_cond_wait(&cpu_usage->cond_updating, &cpu_usage->mux_memdata);
     }
     cpu_usage->is_busy = TRUE;
-
-    snprintf(make_model, LINE_MAXLEN, "Model: \'%s\'\tCores: %d", cpu_usage->model, cpu_usage->num_cores);
-
-    snprintf(totals, LINE_MAXLEN,
-             "CPU%% usr: %.3f\tnice: %.3f\tsys: %.3f\tidle: %.3f",
+    // Alloc and set the cpu usage bars
+    int core = 0;
+    int num_cores = cpu_usage->num_cores;
+    char **core_bars = malloc(num_cores * sizeof(char*));
+    float *usage_perc = malloc(num_cores * sizeof(float));
+	for(core = 0; core < num_cores; core++) {
+        usage_perc[core] = 100.0 - cpu_usage->percore[core].perc_idle;
+	}
+    // prepare the string containing the model and number of cores
+    snprintf(model_cores, LINE_MAXLEN, "Model: \'%s\'\tCores: %d", cpu_usage->model, num_cores);
+    // the one containing usage percentages as well
+    snprintf(totals, 55,
+             "CPU%% usr: %.2f\tnice: %.2f\tsys: %.2f\tidle: %.2f",
               cpu_usage->total.perc_usr, cpu_usage->total.perc_usr_nice,
               cpu_usage->total.perc_sys, cpu_usage->total.perc_idle);
 
@@ -149,20 +151,36 @@ void cpu_window_update(WINDOW *win, CPU_data_t *cpu_usage) {
     // shared data is not accessed now: unlock
     pthread_mutex_unlock(&cpu_usage->mux_memdata);
 
-    mvwaddstr(win, 1, 1, make_model);
-    for(core = 0; core < cpu_usage->num_cores; core++) {
+    // erase the window's contents
+    werase(win);
+
+    mvwaddstr(win, 1, 1, model_cores);
+    for(core = 0; core < num_cores; core++) {
+        core_bars[core] = malloc(BARLEN * sizeof(char));
+		core_bars[core][0] = '[';
+		core_bars[core][BARLEN - 1] = ']';
+        memset(core_bars[core] + 1, ' ', (BARLEN - 2) * sizeof(char));
+        memset(core_bars[core] + 1, '#', ((long)round(usage_perc[core])) * sizeof(char));
 		mvwprintw(win, core + 2, 1, "core%d %s (%.3f%%)",
-			core, core_bars[core], 100.0 - cpu_usage->percore[core].perc_idle);
+			core, core_bars[core], usage_perc[core]);
 	}
-    mvwaddstr(win, cpu_usage->num_cores + 3, 1, totals);
+    mvwaddstr(win, num_cores + 3, 1, totals);
     // refresh the window to display the contents
     wrefresh(win);
+
+    // free everything that was alloc'd
+    free(model_cores);
+    free(totals);
+    free(usage_perc);
+    for(core = 0; core < num_cores; core++) {
+        free(core_bars[core]);
+    }
+    free(core_bars);
 }
 
 /// function that deals with meters included in the process list window
 void proc_window_update(WINDOW *win, TaskList *tasks) {
-    werase(win);
-
+    // defines colors for the table header and the process under the cursor
     short table_header_color = 4;
     short cursor_highlight_color = 5;
     init_pair(table_header_color, COLOR_CYAN, COLOR_WHITE);
@@ -172,8 +190,10 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
     getmaxyx(win, lines, cols);
     int yoff = 1, xoff = 1;
 
-    char ln[LINE_MAXLEN];
-    char ln2[LINE_MAXLEN];
+    char *proc_counters = malloc(LINE_MAXLEN * sizeof(char));
+    char *table_header = malloc(LINE_MAXLEN * sizeof(char));
+    // fills it with blanks to print the colored bar to the end of the line
+    memset(table_header, ' ', LINE_MAXLEN * sizeof(char));
 
     // about to access shared data: lock
     pthread_mutex_lock(&tasks->mux_memdata);
@@ -185,27 +205,47 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
     // sort processes based on the function indicated at runtime
     g_array_sort(tasks->ps, tasks->sortfun);
 
-    snprintf(ln, LINE_MAXLEN, "processes: %ld\tthreads: %ld", tasks->num_ps, tasks->num_threads);
-    snprintf(ln2, LINE_MAXLEN,
-        "%-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s",
+    int running_procs = 0;
+    for(int i = 0; i < tasks->num_ps; i++) {
+        Task t = g_array_index(tasks->ps, Task, i);
+        if(t.state == 'R') {
+            running_procs++;
+        }
+    }
+
+    snprintf(proc_counters, LINE_MAXLEN, "processes: %ld\trunning: %d\tthreads: %ld", tasks->num_ps, running_procs, tasks->num_threads);
+    int null_term = snprintf(table_header, LINE_MAXLEN,
+        " %-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s",
         "PID", "PPID", "USER", "STATE", "NICE", "THREADS", "VSZ (GiB)", "CMD");
+    char tmp = table_header[null_term];
+    table_header[null_term] = table_header[LINE_MAXLEN - 1];
+    table_header[LINE_MAXLEN - 1] = tmp;
+
+    werase(win);
 
     wattr_on(win, A_BOLD, NULL);
-    mvwaddstr(win, yoff++, xoff, ln);
+    mvwaddnstr(win, yoff++, 0, proc_counters, cols);
     wattr_off(win, A_BOLD, NULL);
 
     wattr_on(win, A_STANDOUT, NULL);
-    mvwaddstr(win, yoff++, xoff, ln2);
+    mvwaddnstr(win, yoff++, 0, table_header, cols);
     wattr_off(win, A_STANDOUT, NULL);
 
+    char *procline = NULL;
     int i = 0;
     while((i < lines - yoff - 1) || (tasks->cursor_start + i == tasks->num_ps)) {
-        char procline[LINE_MAXLEN];
+        procline = malloc(LINE_MAXLEN * sizeof(char));
+        memset(procline, ' ', LINE_MAXLEN * sizeof(char));
         Task *t = &(g_array_index(tasks->ps, Task, tasks->cursor_start + i));
         if(t->visible == TRUE) {
-            snprintf(procline, LINE_MAXLEN,
-                     "%-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-30s",
-                     t->pid, t->ppid, t->username, t->state, t->nice, t->num_threads, t->virt_size_bytes / 1048576, t->command);
+            null_term = snprintf(procline, LINE_MAXLEN,
+                     " %-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-s",
+                     t->pid, t->ppid, t->username, t->state, t->nice, t->num_threads,
+                     t->virt_size_bytes / 1048576, t->command);
+            tmp = procline[null_term];
+            procline[null_term] = procline[LINE_MAXLEN - 1];
+            procline[LINE_MAXLEN - 1] = tmp;
+            // set attributes if required
             attr_t proc_attrs = 0x0;
             if(t->highlight == TRUE) {
                 proc_attrs |= A_STANDOUT;
@@ -215,9 +255,10 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
                 proc_attrs = COLOR_PAIR(cursor_highlight_color);
             }
             wattr_on(win, proc_attrs, NULL);
-            mvwaddnstr(win, i + yoff, xoff, procline, cols - 2); // adds the string truncated at the window's width - 2
+            mvwaddnstr(win, i + yoff, 0, procline, cols); // adds the string truncated at the window's width - 2
             wattr_off(win, proc_attrs, NULL);
         }
+        free(procline);
         i++;
     }
 
@@ -227,6 +268,9 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
     pthread_mutex_unlock(&tasks->mux_memdata);
 
     wrefresh(win);
+
+    free(table_header);
+    free(proc_counters);
 }
 
 // initializes the bar to empty (like this: "[        ]") and the scale to mark quarters
