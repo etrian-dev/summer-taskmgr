@@ -6,11 +6,11 @@ A simple terminal-based task manager written in C, with a TUI interface written 
 - pthreads
 - [libjansson](https://digip.org/jansson/)
 - linux-specific headers, such as `unistd.h`
+- POSIX timers (librt)
 ## Compiling
-To build the program from sources you need the autools. In the base directory type
-`autoreconf -i && ./configure && make`. The executable will be in the src directory.  
-Because the menu file path is hardcoded and not yet part of the build system needs to 
-be placed in the directory where the executable runs.
+The project uses the meson build system, so a build directory needs to be created somewhere.
+Then, from the base directory of the project run  
+`meson setup [builddir] src && meson compile -C [builddir]`
 ## Execution
 The task manager has a main screen containing memory and cpu usage statistics
 and a scrollable process list. A simple menu (hidden at startup) allows the user to
