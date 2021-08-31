@@ -63,7 +63,7 @@ int cmp_nthreads_decr(const void *a, const void *b);
 gboolean get_processes_info(TaskList *tasks);
 gboolean get_stat_details(Task *proc, const char *stat_filepath);
 gboolean get_cmdline(Task *proc, const char *cmd_filepath);
-GSList *get_open_fd(const char *fd_dir);
+gboolean get_open_fd(Task *tp, const char *fd_dir);
 gboolean get_username(Task *tp, const char *statusfile);
 
 int isNumber(const char* s, long* n);

@@ -136,15 +136,12 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&shared_data.tasks->mux_memdata, NULL);
     pthread_cond_init(&shared_data.tasks->cond_updating, NULL);
 
-    // creates the threads that handle data update (detached)
+    // creates the threads that handle data update
     pthread_t update_th[4];
-    pthread_attr_t attrs;
-    pthread_attr_init(&attrs);
-    pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED);
-    pthread_create(&update_th[0], &attrs, signal_thread, &shared_data);
-    pthread_create(&update_th[1], &attrs, update_mem, shared_data.mem_stats);
-    pthread_create(&update_th[2], &attrs, update_cpu, shared_data.cpu_stats);
-    pthread_create(&update_th[3], &attrs, update_proc, shared_data.tasks);
+    pthread_create(&update_th[0], NULL, signal_thread, &shared_data);
+    pthread_create(&update_th[1], NULL, update_mem, shared_data.mem_stats);
+    pthread_create(&update_th[2], NULL, update_cpu, shared_data.cpu_stats);
+    pthread_create(&update_th[3], NULL, update_proc, shared_data.tasks);
 
     // inititalize ncurses with some useful additions
     initscr();
@@ -332,15 +329,29 @@ int main(int argc, char **argv) {
     }
 
     // free menu items and descriptions
+    for(i = 0; i < mainmenu_sz; i++) {
+        free(menuitems[i]);
+        free(menudescr[i]);
+    }
     free(menuitems);
     free(menudescr);
+    for(i = 0; i < sortmenu_sz; i++) {
+        free(sortmodes_items[i]);
+        free(sortmodes_descr[i]);
+    }
     free(sortmodes_items);
     free(sortmodes_descr);
+    free(keybinds_main);
+    free(keybinds_sort);
+    free(menus_descr); // the json_t object used to load the menu
+    // frees the sorting modes array
+    free(sorting_modes);
     // deletes the alarm timer
     timer_delete(alarm);
     // frees the memory, cpu and process data structures
     free(shared_data.mem_stats);
     if(shared_data.cpu_stats->model) free(shared_data.cpu_stats->model);
+    free(shared_data.cpu_stats->percore);
     free(shared_data.cpu_stats);
     if(shared_data.tasks->ps) g_array_free(shared_data.tasks->ps, TRUE); // frees data stored inside as well
     shared_data.tasks->sortfun = NULL;

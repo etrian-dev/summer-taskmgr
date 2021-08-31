@@ -19,7 +19,6 @@ void clear_task(void *tp) {
     Task *task_ptr = (Task*)tp;
     if(task_ptr->command) free(task_ptr->command);
     if(task_ptr->username) free(task_ptr->username);
-    if(task_ptr->open_fds) g_slist_free(task_ptr->open_fds);
 }
 
 int compare_PIDs(const void *a, const void *b) {
@@ -44,8 +43,9 @@ gboolean get_processes_info(TaskList *tasks) {
     int (*oldsort)(const void*, const void*) = tasks->sortfun;
     g_array_sort(tasks->ps, cmp_pid_incr);
 
+    // reset the number of threads, since each process could have changed its own
+    // number of threads since the last time the data was updated
     tasks->num_threads = 0;
-
     // resets the presence flag of each process to mark it as terminated
     int i;
     for(i = 0; i < tasks->num_ps; i++) {
@@ -70,6 +70,7 @@ gboolean get_processes_info(TaskList *tasks) {
             // is not an integer (the complete path must be /proc/pid)
             if(entry->d_type == DT_DIR && isNumber(entry->d_name, &pid) == 0) {
                 Task newproc;
+                memset(&newproc, 0, sizeof(Task));
                 // get detailed process infos from the file above
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/stat", pid);
                 gboolean stat_ret = get_stat_details(&newproc, path_statfile);
@@ -78,24 +79,27 @@ gboolean get_processes_info(TaskList *tasks) {
                 gboolean cmd_ret = get_cmdline(&newproc, path_statfile);
                 // get a list of open file descriptors
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/fd", pid);
-                GSList *fdlist = get_open_fd(path_statfile);
+                gboolean fd_ok = get_open_fd(&newproc, path_statfile);
                 // get the username and user id of this process's owner
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/status", pid);
                 gboolean set_uname = get_username(&newproc, path_statfile);
-                if(stat_ret && cmd_ret && set_uname) {
+                if(stat_ret == TRUE && cmd_ret == TRUE && fd_ok == TRUE && set_uname == TRUE) {
                     unsigned int ps_idx;
                     // If the process was already in the array just update its data
-                    if(g_array_binary_search(tasks->ps, &newproc, compare_PIDs, &ps_idx)) {
+                    if(g_array_binary_search(tasks->ps, &newproc, compare_PIDs, &ps_idx) == TRUE) {
                         Task *process = &g_array_index(tasks->ps, struct task, ps_idx);
-                        // discard the list of open file descriptors, then add the updated one
-                        g_slist_free(process->open_fds);
                         // Update the task with new data, but leave PID, visibility and highlighting unchanged
-                        process->present = TRUE;
                         process->ppid = newproc.ppid;
                         process->userid = newproc.userid;
-                        process->username = newproc.username;
-                        process->command = newproc.command;
-                        process->open_fds = fdlist;
+                        if(process->username) free(process->username);
+                        process->username = strdup(newproc.username);
+                        if(process->command) free(process->command);
+                        process->command = strdup(newproc.command);
+                        if(process->open_fds) {
+                            g_slist_free(process->open_fds);
+                            process->open_fds = NULL;
+                        }
+                        process->open_fds = newproc.open_fds;
                         process->state = newproc.state;
                         process->cpu_usr = newproc.cpu_usr;
                         process->cpu_sys = newproc.cpu_sys;
@@ -103,18 +107,21 @@ gboolean get_processes_info(TaskList *tasks) {
                         process->num_threads = newproc.num_threads;
                         process->virt_size_bytes = newproc.virt_size_bytes;
                         process->resident_set = newproc.resident_set;
+                        // mark the updated process as still present in the system
+                        process->present = TRUE;
+                        // free fields in the new task since the old one has been updated
+                        clear_task(&newproc);
                     }
                     else {
                         // process not found: insert it at the end of the new processes's array
                         // add to the process its list of open file decriptors
-                        newproc.open_fds = fdlist;
                         g_array_append_val(newprocs, newproc);
                         newprocs_sz += 1;
                     }
                 }
                 else {
                     // cannot read the process information properly: discard it
-                    if(newproc.command) free(newproc.command);
+                    clear_task(&newproc);
                 }
             }
         }
@@ -124,7 +131,7 @@ gboolean get_processes_info(TaskList *tasks) {
             return FALSE;
         }
 
-        // Discard terminated processes
+        // Discard terminated processes (those still marked not present)
         i = 0;
         while(i < tasks->num_ps) {
             Task *t = &g_array_index(tasks->ps, Task, i);
@@ -137,6 +144,7 @@ gboolean get_processes_info(TaskList *tasks) {
                 t = NULL;
             }
             else {
+                // the process is still running, so count its number of threads
                 tasks->num_threads += t->num_threads;
                 i++;
             }
@@ -145,6 +153,7 @@ gboolean get_processes_info(TaskList *tasks) {
         for(i = 0; i < newprocs_sz; i++) {
             Task newt = g_array_index(newprocs, Task, i);
             g_array_append_val(tasks->ps, newt);
+            // add in these threads as well
             tasks->num_threads += newt.num_threads;
         }
         // then update the number of processes
@@ -152,7 +161,7 @@ gboolean get_processes_info(TaskList *tasks) {
         // the (now empty) new processes array can be freed
         g_array_free(newprocs, FALSE);
 
-        // restore the old sorting criteria
+        // restore the old sorting criteria (but don't sort)
         tasks->sortfun = oldsort;
     }
     return (proc_dir != NULL ? TRUE : FALSE);
@@ -190,8 +199,8 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
             proc->pid = pid;
             proc->state = state;
             proc->ppid = ppid;
-            proc->cpu_usr = usr_time / cpu_ticks_sec;
-            proc->cpu_sys = sys_time / cpu_ticks_sec;
+            proc->cpu_usr = usr_time;
+            proc->cpu_sys = sys_time;
             proc->nice = nice;
             proc->num_threads = nthreads;
             proc->virt_size_bytes = vsize;
@@ -216,13 +225,12 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
 gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
     FILE *fp = fopen(cmd_filepath, "r");
     if(fp) {
-        // the buffer to get the result
         char *buf = NULL;
         if((buf = calloc(BUF_BASESZ, sizeof(char))) == NULL) {
             proc->command = NULL;
             return FALSE;
         }
-        // based on the return value and the lenght of the string read takes an action
+        // based on the return value and the lenght of the buf get the full commandline or not
         char *result = fgets(buf, BUF_BASESZ, fp);
         if(result == NULL) {
             proc->command = NULL;
@@ -241,7 +249,7 @@ gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
                     // the command line args are separated by NULLs. This loop substitutes each
                     // of them with blanks (leaving the string terminator untouched)
                     int i = 1;
-                    while(i < BUF_BASESZ) {
+                    while(i < strlen(proc->command)) {
                         // two NULLs in a row mean the end of the string
                         if(proc->command[i-1] == '\0' && proc->command[i] == '\0') {
                             break;
@@ -254,10 +262,11 @@ gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
                     }
                 }
             }
+            // this branch is executed either if the command read from /proc/[pid]/comm
+            // is shorter than 15 characters or is cmd_filepath is /proc/[pid]/cmdline
             else {
                 // the command line is duplicated into the task's state
                 proc->command = strdup(buf);
-                proc->command[strlen(proc->command) - 1] = ' ';
             }
         }
         free(buf);
@@ -270,25 +279,28 @@ gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
  *
  * The function inserts in a list the names of open file descriptor associated to this
  * process, as read from /proc/PID/fd
+ * \param [in,out] tp Pointer to the task structure to be updated with its open fd list
  * \param [in] fd_dir The path to the directory containing open fds as subdirectories
  * \return The list of open file descriptors iff at least one is open and can be read, NULL otherwise
  */
-GSList *get_open_fd(const char *fd_dir) {
-    GSList *open_fd_list = NULL; // this list will contain the names of open file descriptors
+gboolean get_open_fd(Task *tp, const char *fd_dir) {
+    if(tp->open_fds) {
+        g_slist_free(tp->open_fds);
+        tp->open_fds = NULL;
+    }
     DIR *dirp = opendir(fd_dir);
-
     if(dirp) {
         struct dirent *entry = NULL;
         // no errno check, since i'm uninterested if some fds cannot be obtained
         while((entry = readdir(dirp)) != NULL) {
             long fd;
             if(isNumber(entry->d_name, &fd) == 0) {
-                open_fd_list = g_slist_prepend(open_fd_list, GINT_TO_POINTER((int)fd));
+                tp->open_fds = g_slist_prepend(tp->open_fds, GINT_TO_POINTER((int)fd));
             }
         }
         closedir(dirp);
     }
-    return (open_fd_list != NULL ? open_fd_list : NULL);
+    return (dirp ? TRUE : FALSE);
 }
 /**
  * \brief Obtains the username of the user owning the process

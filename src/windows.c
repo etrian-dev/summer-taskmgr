@@ -215,8 +215,8 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
 
     snprintf(proc_counters, LINE_MAXLEN, "processes: %ld\trunning: %d\tthreads: %ld", tasks->num_ps, running_procs, tasks->num_threads);
     int null_term = snprintf(table_header, LINE_MAXLEN,
-        " %-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s",
-        "PID", "PPID", "USER", "STATE", "NICE", "THREADS", "VSZ (GiB)", "CMD");
+        " %-10s %-10s %-20s %-5s %-5s %-10s %-10s %-10s %-10s",
+        "PID", "PPID", "USER", "STATE", "NICE", "CPU", "THREADS", "VSZ (GiB)", "CMD");
     char tmp = table_header[null_term];
     table_header[null_term] = table_header[LINE_MAXLEN - 1];
     table_header[LINE_MAXLEN - 1] = tmp;
@@ -239,8 +239,8 @@ void proc_window_update(WINDOW *win, TaskList *tasks) {
         Task *t = &(g_array_index(tasks->ps, Task, tasks->cursor_start + i));
         if(t->visible == TRUE) {
             null_term = snprintf(procline, LINE_MAXLEN,
-                     " %-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-s",
-                     t->pid, t->ppid, t->username, t->state, t->nice, t->num_threads,
+                     " %-10d %-10d %-20s %-5c %-5ld %-10ld %-10ld %-10ld %-s",
+                     t->pid, t->ppid, t->username, t->state, t->nice, t->cpu_usr + t->cpu_sys, t->num_threads,
                      t->virt_size_bytes / 1048576, t->command);
             tmp = procline[null_term];
             procline[null_term] = procline[LINE_MAXLEN - 1];
