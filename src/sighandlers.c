@@ -9,10 +9,11 @@
 #include <ncurses.h>
 #include <pthread.h>
 
+#include "windows.h"
+
 #include "mem_info.h"
 #include "cpu_info.h"
 #include "process_info.h"
-#include "windows.h"
 
 #include "main.h"
 

@@ -3,6 +3,6 @@
 
 void *update_mem(void *mem_ds);
 void *update_cpu(void *cpu_ds);
-void *update_proc(void *proc_ds);
+void *update_proc(void *all_ds);
 
 #endif

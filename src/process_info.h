@@ -1,10 +1,15 @@
+/**
+ * \file process_info.h
+ * \brief Data structures and functions related to processes
+ */
 #ifndef PROCESS_INFO_DEFINED
 #define PROCESS_INFO_DEFINED
 
 #include <glib.h>
 
+#include "main.h"
+
 #define PROC_DIR "/proc"
-#define BUF_BASESZ 256
 
 struct task {
     gboolean visible; // flag used to hide the process from the view
@@ -18,8 +23,8 @@ struct task {
     char **args; // the process'arguments
     GSList *open_fds; // list of this process's open file descriptors
     char state;
-    gulong cpu_usr;
-    gulong cpu_sys;
+    unsigned long int cpu_usr;
+    unsigned long int cpu_sys;
     long int nice; // process priority (nice value): ranges from 19 (low prio) to -20 (high prio)
     long int num_threads;
     long int virt_size_bytes; // size of the virtual memory occupied by the process (in bytes)
@@ -60,7 +65,7 @@ int cmp_nthreads_inc(const void *a, const void *b);
 int cmp_nthreads_decr(const void *a, const void *b);
 
 // gets information about the running processes
-gboolean get_processes_info(TaskList *tasks);
+gboolean get_processes_info(TaskList *tasks, CPU_data_t *cpudata);
 gboolean get_stat_details(Task *proc, const char *stat_filepath);
 gboolean get_cmdline(Task *proc, const char *cmd_filepath);
 gboolean get_open_fd(Task *tp, const char *fd_dir);

@@ -1,11 +1,16 @@
+/**
+ * \file mem_info.h
+ * \brief Data structures and functions related to memory usage
+ */
 #ifndef MEM_INFO_INCLUDED
 #define MEM_INFO_INCLUDED
 
 #include <pthread.h>
 #include <glib.h>
 
+#include "main.h"
+
 #define MEM_STATFILE "/proc/meminfo"
-#define BUF_BASESZ 256
 
 typedef struct mem_data_t {
     gulong total_mem;

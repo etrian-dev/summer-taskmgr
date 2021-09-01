@@ -5,14 +5,18 @@
 #ifndef MAIN_H_INCLUDED
 #define MAIN_H_INCLUDED
 
-#include "mem_info.h"
-#include "cpu_info.h"
-#include "process_info.h"
-
 #include <ncurses.h>
+#include <time.h>
+
+// forward declarations to avoid circular dependencies with the headers where these types are defined
+typedef struct mem_data_t Mem_data_t;
+typedef struct cpu_data_t CPU_data_t;
+typedef struct tasklist TaskList;
 
 // json menu description file path
 #define JSON_MENUFILE "menus.json"
+// base buffer size
+#define BUF_BASESZ 128
 
 struct taskmgr_data_t {
     // windows displaying data fetched
@@ -33,6 +37,8 @@ struct taskmgr_data_t {
 void stop_timer(timer_t timerid, struct itimerspec *oldval);
 // prints the menu with supplied keybindings, items and descriptions
 int print_menu(int *keybinds, char **items, char **descriptions, const int nitems);
+int isNumber(const char* s, long* n);
+char* read_pattern(WINDOW *win, const int row, const int col, const char *prompt);
 
 // thread handling signals
 void *signal_thread(void *param);

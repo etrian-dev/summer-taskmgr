@@ -2,6 +2,8 @@
 
 #include <unistd.h>
 
+#include "main.h"
+
 #include "mem_info.h"
 #include "cpu_info.h"
 #include "process_info.h"
@@ -65,13 +67,16 @@ void *update_cpu(void *cpu_ds) {
 /**
  * \brief This is the function executed by the thread that updates the process list data structure
  */
-void *update_proc(void *proc_ds) {
+void *update_proc(void *all_ds) {
     struct timespec delay;
     delay.tv_sec = 1;
     delay.tv_nsec = 0;
 
+    struct taskmgr_data_t *ds = (struct taskmgr_data_t*)all_ds;
+
     while(1) {
-        TaskList *tl = (TaskList*)proc_ds;
+        TaskList *tl = (TaskList*)ds->tasks;
+        CPU_data_t *cpu = (CPU_data_t*)ds->cpu_stats;
         // about to access shared data: lock
         pthread_mutex_lock(&tl->mux_memdata);
         while(tl->is_busy == TRUE) {
@@ -79,7 +84,7 @@ void *update_proc(void *proc_ds) {
         }
         tl->is_busy = TRUE;
 
-        get_processes_info(tl);
+        get_processes_info(tl, cpu);
 
         tl->is_busy = FALSE;
         pthread_cond_signal(&tl->cond_updating);

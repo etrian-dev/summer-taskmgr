@@ -3,6 +3,14 @@
  * \brief Utility functions used by main.c
  */
 
+#include <errno.h>
+#include <time.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+#include <ncurses.h>
+
 #include "main.h"
 
 /**
@@ -41,4 +49,99 @@ int print_menu(int *keybinds, char **items, char **descriptions, const int nitem
     }
     refresh();
     return 0;
+}
+
+/**
+ * \brief Utility function to convert a string to long int
+ *
+ * - 0: conversione ok
+ * - 1: non e' un numbero
+ * - 2: overflow/underflow
+ * \param [in] s La stringa da convertire in un intero
+ * \param [out] n Puntatore all'intero risultato della conversione
+ * \return Ritorna un numero corrispondente all'esito della conversione, come riportato nella descrizione
+ */
+int isNumber(const char* s, long* n) {
+    if (s==NULL) return 1;
+    if (strlen(s)==0) return 1;
+    char* e = NULL;
+    errno=0;
+    long val = strtol(s, &e, 10);
+    if (errno == ERANGE) return 2;    // overflow
+    if (e != NULL && *e == (char)0) {
+        *n = val;
+        return 0;   // successo
+    }
+    return 1;   // non e' un numero
+}
+
+int string_dup(char **dest, const char *src) {
+    if((*dest = strndup(src, strlen(src) + 1)) == NULL) {
+        // errore di duplicazione della stringa, riporto il codice di errore al chiamante
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * \brief Reads a string (until '\n' is entered) with the given prompt
+ *
+ * The function reads a string (reads characters until newline) from the given curses WINDOW
+ * at the given line and column offset. A null-terminated string may be supplied as a prompt
+ *
+ * \param [in] win The ncurses window that is accepting input (and where output will be echoed)
+ * \param [in] row The row offset inside the window where the input line will be read and echoed
+ * \param [in] col The column offset of the prompt string
+ * \param [in] prompt A prompt for the user (may be NULL, otherwise it must be a null-terminated string)
+ * \return Returns the pattern entered by the user
+ */
+char* read_pattern(WINDOW *win, const int row, const int col, const char *prompt) {
+    // the color pair green (foreground) on black (background) is defined to
+    // help making the search bar stand out more
+    int green_on_black = 1;
+    init_pair(green_on_black, COLOR_GREEN, COLOR_BLACK);
+
+    // pattern allocation
+    char *pattern = calloc(BUF_BASESZ, sizeof(char));
+    size_t alloc_len = BUF_BASESZ;
+    size_t currlen = 0;
+    // the xoff is variable, so it is stored here
+    int xoff = col;
+
+    wmove(win, row, col);
+    wclrtoeol(win);
+
+    attron(COLOR_PAIR(green_on_black));
+
+    // print the prompt if supplied
+    if(prompt) {
+        mvwaddstr(win, row, xoff, prompt);
+        xoff += strlen(prompt);
+        wrefresh(win);
+    }
+
+    int c;
+    while((c = getch()) != '\n') {
+        // check if the pattern needs to be realloc'd
+        if(alloc_len <= currlen) {
+            alloc_len *= 2;
+            pattern = realloc(pattern, alloc_len);
+        }
+        // ascii letters & numbers are allowed in the pattern because they're simpler to handle
+        if(isalnum(c)) {
+            pattern[currlen] = (char)c;
+            currlen++;
+            // echo the character
+            mvaddch(row, xoff + currlen, (char)c);
+        }
+        // handle backspaces to allow editing the pattern
+        if(c == KEY_BACKSPACE && currlen > 0) {
+            mvdelch(row, xoff + currlen);
+            pattern[currlen] = '\0';
+            currlen--;
+        }
+    }
+
+    attroff(COLOR_PAIR(green_on_black));
+    return pattern;
 }

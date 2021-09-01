@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include <unistd.h>
+#include <sys/types.h>
 #include <signal.h>
 
 #include <glib.h>
@@ -29,6 +30,7 @@
  * process is marked as highlighted until 'f' is pressed again to exit search mode
  */
 void find_pattern(TaskList *tasks);
+void kill_process(TaskList *tasks);
 
 /**
  * \brief The program's main function
@@ -141,7 +143,8 @@ int main(int argc, char **argv) {
     pthread_create(&update_th[0], NULL, signal_thread, &shared_data);
     pthread_create(&update_th[1], NULL, update_mem, shared_data.mem_stats);
     pthread_create(&update_th[2], NULL, update_cpu, shared_data.cpu_stats);
-    pthread_create(&update_th[3], NULL, update_proc, shared_data.tasks);
+    // this thread needs data from the memory and the CPU
+    pthread_create(&update_th[3], NULL, update_proc, &shared_data);
 
     // inititalize ncurses with some useful additions
     initscr();
@@ -179,6 +182,7 @@ int main(int argc, char **argv) {
     gboolean run = TRUE;
     gboolean menu_shown = FALSE; // TRUE if the menu below must be printed (updates to data are not shown to the user)
     gboolean searching = FALSE; // flag set iff a searching is in progress
+    gboolean killing = FALSE; // flag set iff the user is typing a PID to kill
     int key = 0, last_key = 0; // remembers the last key pressed
     // This is needed to have a shorter timer interval only when the user is scolling
     while(run == TRUE) {
@@ -223,10 +227,7 @@ int main(int argc, char **argv) {
                 }
                 else {
                     // search for a pattern in the process list
-                    attron(COLOR_PAIR(green_on_black));
-                    mvaddstr(LINES - 1, 1, "Pattern: ");
                     find_pattern(shared_data.tasks);
-                    attroff(COLOR_PAIR(green_on_black));
                     // hide the menu
                     menu_shown = FALSE;
                     // set the searching flag
@@ -238,6 +239,33 @@ int main(int argc, char **argv) {
                 }
                 break;
             }
+            case 'r': // show/hide raw values
+                if(shared_data.rawdata == 0) {
+                    shared_data.rawdata = 1;
+                }
+                else if(shared_data.rawdata == 1) {
+                    shared_data.rawdata = 0;
+                }
+                break;
+            case 'k': // kill a process
+                if(killing == TRUE) {
+                    killing = FALSE;
+                    // kill mode is being exited
+                    wmove(stdscr, LINES - 1, 0);
+                    wclrtoeol(stdscr);
+                }
+                else {
+                    kill_process(shared_data.tasks);
+                    // hide the menu
+                    menu_shown = FALSE;
+                    // set the killing flag
+                    killing = TRUE;
+                    // restart the timer
+                    timer_settime(alarm, 0, &spec, NULL);
+                    // update the window immediately (otherwise it will refresh at the next timer tick)
+                    proc_window_update(shared_data.procwin, shared_data.tasks);
+                }
+                break;
             case 'm': // toggles menu visibility
                 menu_shown = (menu_shown == TRUE ? FALSE : TRUE);
                 // stop the timer if the menu will be shown
@@ -248,14 +276,6 @@ int main(int argc, char **argv) {
                 else {
                     timer_settime(alarm, 0, &spec, NULL);
                 }
-            case 'r': // show/hide raw values
-                if(shared_data.rawdata == 0) {
-                    shared_data.rawdata = 1;
-                }
-                else if(shared_data.rawdata == 1) {
-                    shared_data.rawdata = 0;
-                }
-                break;
             // handling of the process cursor movement (to simulate a scrollable window)
             case KEY_DOWN:
                 // if a key is pressed
@@ -366,29 +386,7 @@ int main(int argc, char **argv) {
 }
 
 void find_pattern(TaskList *tasks) {
-    char *pattern = calloc(BUF_BASESZ, sizeof(char));
-    gsize alloc_len = BUF_BASESZ;
-    gsize currlen = 0;
-    const gsize xoff = strlen("Pattern: "); // for echoing characters typed after the prompt message
-    int c;
-    while((c = getch()) != '\n') {
-        if(alloc_len <= currlen) {
-            alloc_len *= 2;
-            pattern = realloc(pattern, alloc_len);
-        }
-        // ascii characters can appear in the pattern
-        if(isalnum(c)) {
-            pattern[currlen] = (char)c;
-            currlen++;
-            mvaddch(LINES - 1, xoff + currlen, (char)c);
-        }
-        // handle backspaces to allow editing the pattern
-        if(c == KEY_BACKSPACE && currlen > 0) {
-            mvdelch(LINES - 1, xoff + currlen);
-            pattern[currlen] = '\0';
-            currlen--;
-        }
-    }
+    char *pattern = read_pattern(stdscr, LINES - 1, 1, "(find) ");
     // Hightlight matching paths
     pthread_mutex_lock(&tasks->mux_memdata);
     while(tasks->is_busy == TRUE) {
@@ -405,8 +403,60 @@ void find_pattern(TaskList *tasks) {
     }
     tasks->is_busy = FALSE;
     pthread_mutex_unlock(&tasks->mux_memdata);
-    mvprintw(LINES - 1, xoff + currlen + 5,
-        "Processes matching \"%s\": %d (press 'f' to quit)", pattern, matches);
+    mvprintw(LINES - 1, 1, "Processes matching \"%s\": %d (press 'f' to quit)", pattern, matches);
+    free(pattern);
+    wrefresh(stdscr);
+}
+
+/**
+ * \brief Sends SIGKILL to the process whose PID is entered
+ *
+ * This function asks the user for a PID and sends SIGKILL to that process. If the
+ * process can be killed it will do so, otherwise a short text will be displayed
+ */
+void kill_process(TaskList *tasks) {
+    // read the PID to kill
+    char *pattern = read_pattern(stdscr, LINES - 1, 1, "(kill) ");
+    long int pid;
+    if(isNumber(pattern, &pid) != 0) {
+        // The PID is either not a number or out of range for long
+        addstr(": not a valid PID");
+    }
+    else {
+        // The PID is searched in the task list
+        Task *process = NULL;
+        Task t;
+        t.pid = pid;
+        unsigned int idx;
+        if(g_array_binary_search(tasks->ps, &t, cmp_pid_incr, &idx) == TRUE) {
+            process = &g_array_index(tasks->ps, Task, idx);
+        }
+        errno = 0;
+        if(kill((pid_t)pid, SIGKILL) == -1) {
+            switch(errno) {
+            case EINVAL:
+                // invalid signal name
+                addstr(": Invalid signal name");
+                break;
+            case EPERM:
+                // no sufficient permission to kill this process
+                mvprintw(LINES - 1, 1, "Cannot kill PID %s (%s): No permission",
+                    pattern,
+                    (process ? process->command : "no cmdline"));
+                break;
+            case ESRCH:
+                // The PID hasn't been found
+                // if the process is a zombie it can't be killed, since it's already terminated
+                mvprintw(LINES - 1, 1, "Cannot find PID %s (maybe it's a zombie)", pattern);
+                break;
+            }
+        }
+        else {
+            mvprintw(LINES - 1, 1, "Killed process with PID %s (%s)",
+                pattern,
+                (process ? process->command : "no cmdline"));
+        }
+    }
     free(pattern);
     wrefresh(stdscr);
 }

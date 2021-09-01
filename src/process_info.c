@@ -12,7 +12,9 @@
 
 #include <glib.h>
 
+#include "cpu_info.h"
 #include "process_info.h"
+#include "main.h"
 
 // clears (but does not free) a Task structure (given as a pointer)
 void clear_task(void *tp) {
@@ -37,7 +39,7 @@ int compare_PIDs(const void *a, const void *b) {
  * \param [in,out] tasks The structure holding (among other things) the array of processes in the system
  * \return Returns TRUE iff the update was completed successfully, FALSE otherwise
  */
-gboolean get_processes_info(TaskList *tasks) {
+gboolean get_processes_info(TaskList *tasks, CPU_data_t *cpudata) {
     // sort the tasklist by increasing PID (and save the old sorting mode)
     // this expensive passage is needed to perform several faster binary searches on the array
     int (*oldsort)(const void*, const void*) = tasks->sortfun;
@@ -83,45 +85,47 @@ gboolean get_processes_info(TaskList *tasks) {
                 // get the username and user id of this process's owner
                 snprintf(path_statfile, BUF_BASESZ, "/proc/%ld/status", pid);
                 gboolean set_uname = get_username(&newproc, path_statfile);
-                if(stat_ret == TRUE && cmd_ret == TRUE && fd_ok == TRUE && set_uname == TRUE) {
-                    unsigned int ps_idx;
-                    // If the process was already in the array just update its data
-                    if(g_array_binary_search(tasks->ps, &newproc, compare_PIDs, &ps_idx) == TRUE) {
-                        Task *process = &g_array_index(tasks->ps, struct task, ps_idx);
-                        // Update the task with new data, but leave PID, visibility and highlighting unchanged
-                        process->ppid = newproc.ppid;
-                        process->userid = newproc.userid;
-                        if(process->username) free(process->username);
+
+
+                unsigned int ps_idx;
+                // If the process was already in the array just update its data
+                if(g_array_binary_search(tasks->ps, &newproc, compare_PIDs, &ps_idx) == TRUE) {
+                    Task *process = &g_array_index(tasks->ps, struct task, ps_idx);
+                    // Update the task with new data, but leave PID, visibility and highlighting unchanged
+                    process->ppid = newproc.ppid;
+                    process->userid = newproc.userid;
+                    if(process->username) {
+                        free(process->username);
+                    }
+                    if(newproc.username) {
                         process->username = strdup(newproc.username);
-                        if(process->command) free(process->command);
+                    }
+                    if(process->command) {
+                        free(process->command);
                         process->command = strdup(newproc.command);
-                        if(process->open_fds) {
-                            g_slist_free(process->open_fds);
-                            process->open_fds = NULL;
-                        }
-                        process->open_fds = newproc.open_fds;
-                        process->state = newproc.state;
-                        process->cpu_usr = newproc.cpu_usr;
-                        process->cpu_sys = newproc.cpu_sys;
-                        process->nice = newproc.nice;
-                        process->num_threads = newproc.num_threads;
-                        process->virt_size_bytes = newproc.virt_size_bytes;
-                        process->resident_set = newproc.resident_set;
-                        // mark the updated process as still present in the system
-                        process->present = TRUE;
-                        // free fields in the new task since the old one has been updated
-                        clear_task(&newproc);
                     }
-                    else {
-                        // process not found: insert it at the end of the new processes's array
-                        // add to the process its list of open file decriptors
-                        g_array_append_val(newprocs, newproc);
-                        newprocs_sz += 1;
+                    if(process->open_fds) {
+                        g_slist_free(process->open_fds);
+                        process->open_fds = NULL;
                     }
+                    process->open_fds = newproc.open_fds;
+                    process->state = newproc.state;
+                    process->cpu_usr = newproc.cpu_usr / cpudata->total.prev_total;
+                    process->cpu_sys = newproc.cpu_sys / cpudata->total.prev_total;
+                    process->nice = newproc.nice;
+                    process->num_threads = newproc.num_threads;
+                    process->virt_size_bytes = newproc.virt_size_bytes;
+                    process->resident_set = newproc.resident_set;
+                    // mark the updated process as still present in the system
+                    process->present = TRUE;
+                    // free fields in the new task since the old one has been updated
+                    clear_task(&newproc);
                 }
                 else {
-                    // cannot read the process information properly: discard it
-                    clear_task(&newproc);
+                    // process not found: insert it at the end of the new processes's array
+                    // add to the process its list of open file decriptors
+                    g_array_append_val(newprocs, newproc);
+                    newprocs_sz += 1;
                 }
             }
         }
@@ -199,8 +203,8 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
             proc->pid = pid;
             proc->state = state;
             proc->ppid = ppid;
-            proc->cpu_usr = usr_time;
-            proc->cpu_sys = sys_time;
+            proc->cpu_usr = usr_time * cpu_ticks_sec;
+            proc->cpu_sys = sys_time * cpu_ticks_sec;
             proc->nice = nice;
             proc->num_threads = nthreads;
             proc->virt_size_bytes = vsize;
@@ -223,56 +227,54 @@ gboolean get_stat_details(Task *proc, const char *stat_filepath) {
  * \return Returns TRUE iff the command line has been read successfully and is not NULL, FALSE otherwise
  */
 gboolean get_cmdline(Task *proc, const char *cmd_filepath) {
+    // open the file containing the command line (either /proc/[pid]/comm or /proc/pid/cmdline)
     FILE *fp = fopen(cmd_filepath, "r");
     if(fp) {
         char *buf = NULL;
         if((buf = calloc(BUF_BASESZ, sizeof(char))) == NULL) {
-            proc->command = NULL;
             return FALSE;
         }
-        // based on the return value and the lenght of the buf get the full commandline or not
+        // if the process has nothing in /proc/[pid]/comm then fallback to cmdline
         char *result = fgets(buf, BUF_BASESZ, fp);
         if(result == NULL) {
-            proc->command = NULL;
+            free(buf);
+            return FALSE;
         }
-        else {
-            // If the command is shorter than the max lenght (15 + null terminator)
-            // then the comm hasn't been truncated. If a command's lenght is
-            // greater or equal to that, then it's likely to have been truncated.
-            // So, the full command is fetched trough /proc/[pid]/cmdline (if possible)
-            // and it's used instead. If the full command is unavailable the truncated
-            // command name is used instead
-            if(strlen(buf) >= 15 && strstr(cmd_filepath, "cmdline") == NULL) {
-                char full_cmdline_path[BUF_BASESZ];
-                snprintf(full_cmdline_path, BUF_BASESZ, "/proc/%d/cmdline", proc->pid);
-                if(get_cmdline(proc, full_cmdline_path) == TRUE) {
-                    // the command line args are separated by NULLs. This loop substitutes each
-                    // of them with blanks (leaving the string terminator untouched)
-                    int i = 1;
-                    while(i < strlen(proc->command)) {
-                        // two NULLs in a row mean the end of the string
-                        if(proc->command[i-1] == '\0' && proc->command[i] == '\0') {
-                            break;
-                        }
-                        // one NULL and then a non-NULL character mean an argument separator
-                        if(proc->command[i-1] == '\0' && proc->command[i] != '\0') {
-                            proc->command[i-1] = ' ';
-                        }
-                        i++;
+        // If the command is shorter than the max lenght (15 + null terminator)
+        // then the comm hasn't been truncated. If a command's lenght is
+        // greater or equal to that, then it's likely to have been truncated.
+        // So, the full command is fetched trough /proc/[pid]/cmdline (if possible)
+        // and it's used instead. If the full command is unavailable the truncated
+        // command name is used instead
+        if((strlen(buf) >= 15 || result == NULL) && strstr(cmd_filepath, "cmdline") == NULL) {
+            char full_cmdline_path[BUF_BASESZ];
+            snprintf(full_cmdline_path, BUF_BASESZ, "/proc/%d/cmdline", proc->pid);
+            if(get_cmdline(proc, full_cmdline_path) == TRUE) {
+                // the command line args are separated by NULLs. This loop substitutes each
+                // of them with blanks (leaving the string terminator untouched)
+                int i = 1;
+                while(i < strlen(proc->command)) {
+                    // two NULLs in a row mean the end of the string
+                    if(proc->command[i-1] == '\0' && proc->command[i] == '\0') {
+                        break;
                     }
+                    // one NULL and then a non-NULL character mean an argument separator
+                    if(proc->command[i-1] == '\0' && proc->command[i] != '\0') {
+                        proc->command[i-1] = ' ';
+                    }
+                    i++;
                 }
             }
-            // this branch is executed either if the command read from /proc/[pid]/comm
-            // is shorter than 15 characters or is cmd_filepath is /proc/[pid]/cmdline
-            else {
-                // the command line is duplicated into the task's state
-                proc->command = strdup(buf);
-            }
+        }
+        // this branch is executed either if the command read from /proc/[pid]/comm
+        // is shorter than 15 characters or is cmd_filepath is /proc/[pid]/cmdline
+        else if(result != NULL) {
+            proc->command = strdup(buf);
         }
         free(buf);
         fclose(fp);
     }
-    return (fp && proc->command ? TRUE : FALSE);
+    return (fp ? TRUE : FALSE);
 }
 /**
  * \brief Get the list of this process's open file descriptor
@@ -351,25 +353,5 @@ gboolean get_username(Task *tp, const char *statusfile) {
     return (fp && tp->username ? TRUE : FALSE);
 }
 
-/**
- * Funzione per convertire una stringa s in un long int.
- * isNumber ritorna:
- * - 0: conversione ok
- * - 1: non e' un numbero
- * - 2: overflow/underflow
- */
-int isNumber(const char* s, long* n) {
-    if (s==NULL) return 1;
-    if (strlen(s)==0) return 1;
-    char* e = NULL;
-    errno=0;
-    long val = strtol(s, &e, 10);
-    if (errno == ERANGE) return 2;    // overflow
-    if (e != NULL && *e == (char)0) {
-        *n = val;
-        return 0;   // successo
-    }
-    return 1;   // non e' un numero
-}
 
 

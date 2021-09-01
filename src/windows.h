@@ -1,3 +1,7 @@
+/**
+ * \file windows.h
+ * \brief Functions related to taskmanager windows update
+ */
 #ifndef WINDOW_H_INCLUDED
 #define WINDOW_H_INCLUDED
 

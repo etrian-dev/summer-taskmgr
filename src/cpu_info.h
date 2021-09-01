@@ -1,11 +1,16 @@
+/**
+ * \file cpu_info.h
+ * \brief Data structures and functions related to CPU usage
+ */
 #ifndef CPU_INFO_INCLUDED
 #define CPU_INFO_INCLUDED
 
 #include <glib.h>
 
+#include "main.h"
+
 #define CPU_STATFILE "/proc/stat"
 #define CPU_MODELFILE "/proc/cpuinfo" // arch-dependent contents
-#define BUF_BASESZ 256
 
 // defines a structure to hold cpu statistics
 struct core_data_t {
