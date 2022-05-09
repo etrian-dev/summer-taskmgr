@@ -5,15 +5,14 @@
 #ifndef CPU_INFO_INCLUDED
 #define CPU_INFO_INCLUDED
 
-#include <glib.h>
-
 #include "main.h"
 
 #define CPU_STATFILE "/proc/stat"
-#define CPU_MODELFILE "/proc/cpuinfo" // arch-dependent contents
+#define CPU_MODELFILE "/proc/cpuinfo" // arch-dependent content
 
 // defines a structure to hold cpu statistics
-struct core_data_t {
+struct core_data_t
+{
     // previous (unscaled) data points
     unsigned long int prev_usr;
     unsigned long int prev_usr_nice;
@@ -27,20 +26,21 @@ struct core_data_t {
     float perc_idle;
 };
 
-typedef struct cpu_data_t {
-	char *model;					///< CPU model, as read from /proc/cpuinfo
-	int num_cores;					///< The cpu's number of cores
-	struct core_data_t *percore;	///< The per-core usage statistics
-	struct core_data_t total;		///< The usage statistics of the whole CPU
-	// syncronization variables
-	pthread_mutex_t mux_memdata;
-	pthread_cond_t cond_updating;
-	gboolean is_busy;
+typedef struct cpu_data_t
+{
+    char *model;                 ///< CPU model, as read from /proc/cpuinfo
+    int num_cores;               ///< The cpu's number of cores
+    struct core_data_t *percore; ///< The per-core usage statistics
+    struct core_data_t total;    ///< The usage statistics of the whole CPU
+    // syncronization variables
+    pthread_mutex_t mux_memdata;
+    pthread_cond_t cond_updating;
+    bool is_busy;
 } CPU_data_t;
 
 // gets statistics about the cpu usage
 // not reentrant: uses static variables
-gboolean get_cpu_info(CPU_data_t *cpudata);
-gboolean get_cpu_model(char **model, int *cores);
+bool get_cpu_info(CPU_data_t *cpudata);
+bool get_cpu_model(char **model, int *cores);
 
 #endif

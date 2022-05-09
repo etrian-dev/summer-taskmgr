@@ -10,7 +10,7 @@
 #include "process_info.h"
 
 // lenght of the scale and progress bars drawn inside the windows
-#define BARLEN 102
+#define BARLEN 103
 // lenght of a fixed buffer that should be long enough for output lines
 #define LINE_MAXLEN 512
 

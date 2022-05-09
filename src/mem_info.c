@@ -1,27 +1,29 @@
 #include <stdio.h>
-
-#include <glib.h>
+#include <stdlib.h>
 
 #include "mem_info.h"
 
 // gets statistics about the memory usage
 // see man 5 proc at section "/proc/meminfo"
-gboolean get_mem_info(Mem_data_t *mem_usage) {
+bool get_mem_info(Mem_data_t *mem_usage)
+{
 
-    //temp local variables
-    gulong mtot = 0;
-    gulong mfree = 0;
-    gulong mavail = 0;
-    gulong mbuffer = 0;
-    gulong mcached = 0;
-    gulong mswp_tot = 0;
-    gulong mswp_free = 0;
+    // temp local variables
+    unsigned long mtot = 0;
+    unsigned long mfree = 0;
+    unsigned long mavail = 0;
+    unsigned long mbuffer = 0;
+    unsigned long mcached = 0;
+    unsigned long mswp_tot = 0;
+    unsigned long mswp_free = 0;
 
     FILE *stat_file = NULL;
     char *buf = malloc(BUF_BASESZ);
-    gulong bufsz = BUF_BASESZ;
-    if((stat_file = fopen(MEM_STATFILE, "r")) && buf) {
-        while(fgets(buf, bufsz, stat_file)) {
+    unsigned long bufsz = BUF_BASESZ;
+    if ((stat_file = fopen(MEM_STATFILE, "r")) && buf)
+    {
+        while (fgets(buf, bufsz, stat_file))
+        {
             sscanf(buf, "MemTotal:%*[^0-9]%lu", &mtot);
             sscanf(buf, "MemFree:%*[^0-9]%lu", &mfree);
             sscanf(buf, "MemAvailable:%*[^0-9]%lu", &mavail);
@@ -30,7 +32,8 @@ gboolean get_mem_info(Mem_data_t *mem_usage) {
             sscanf(buf, "SwapTotal:%*[^0-9]%lu", &mswp_tot);
             sscanf(buf, "SwapFree:%*[^0-9]%lu", &mswp_free);
         }
-        if(mavail == 0) {
+        if (mavail == 0)
+        {
             mavail = mfree + mbuffer + mcached;
         }
 
@@ -41,5 +44,5 @@ gboolean get_mem_info(Mem_data_t *mem_usage) {
         mem_usage->swp_tot = mswp_tot;
         mem_usage->swp_free = mswp_free;
     }
-    return (stat_file && buf ? TRUE : FALSE);
+    return (stat_file && buf ? true : false);
 }

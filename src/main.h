@@ -38,7 +38,12 @@ void stop_timer(timer_t timerid, struct itimerspec *oldval);
 // prints the menu with supplied keybindings, items and descriptions
 int print_menu(int *keybinds, char **items, char **descriptions, const int nitems);
 int isNumber(const char* s, long* n);
+// reads a pattern from the window win at the location supplied with a prompt
 char* read_pattern(WINDOW *win, const int row, const int col, const char *prompt);
+// read and find a pattern in the tasklist
+void find_pattern(TaskList *tasks);
+// read the PID and try to kill a process in the tasklist
+void kill_process(TaskList *tasks);
 
 // thread handling signals
 void *signal_thread(void *param);

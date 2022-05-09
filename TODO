@@ -1,7 +1,6 @@
 ********************************************
 * Write documentation comments for Doxygen!*
 ********************************************
-* Fix thread count
 * Search in PID, username and other fields for patterns
 * Calculate per-process CPU usage (load avg)
 * Make the drawing process more efficient by having data alloc'd on the heap that is modified based
@@ -15,3 +14,4 @@ a dynamic command prompt used to control the program's behaviour
 * Implement menu location reading from the /share subdir or the base directory to ease testing
 * Solve additional garbage on the command field of processes, likely from a static buffer or some
  leaked memory
+* Improve process killing
